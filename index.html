@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Third Zone — ხვრელები</title>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+  :root{--bg:#0d1410;--card:#15201a;--line:#24342a;--txt:#e8f1ea;--mut:#8aa293;--acc:#3ddc84;--warn:#ffb020;--bad:#ff5a5a}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 22px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  h1{font-size:20px;margin:0;letter-spacing:.3px}
+  h1 span{color:var(--acc)}
+  .status{display:flex;gap:14px;font-size:13px;color:var(--mut);flex-wrap:wrap}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--bad);margin-right:6px;vertical-align:middle}
+  .dot.ok{background:var(--acc)} .dot.wait{background:var(--warn)}
+  main{max-width:980px;margin:0 auto;padding:22px}
+  .totals{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:18px}
+  .tot{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  .tot .l{font-size:13px;color:var(--mut)} .tot .v{font-size:40px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+  .holes{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .hole{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;text-align:center;transition:border-color .3s, box-shadow .3s}
+  .ringbox{height:124px;display:flex;align-items:center;justify-content:center;margin-bottom:10px}
+  .ring{border-radius:50%;border:4px solid #2c4a37;background:radial-gradient(circle,#050806 55%,#0f1a13);transition:all .25s}
+  .hole[data-id=small] .ring{width:56px;height:56px}
+  .hole[data-id=medium] .ring{width:84px;height:84px}
+  .hole[data-id=large] .ring{width:112px;height:112px}
+  .hole .name{font-weight:600} .hole .pts{font-size:12px;color:var(--mut);margin-top:2px}
+  .hole .cnt{font-size:46px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums}
+  .hole.hit{border-color:var(--acc);box-shadow:0 0 0 3px rgba(61,220,132,.25)}
+  .hole.hit .ring{border-color:var(--acc);background:radial-gradient(circle,#3ddc84 0 20%,#050806 60%)}
+  .row{display:flex;justify-content:space-between;align-items:center;margin:24px 0 10px}
+  h2{font-size:15px;margin:0;color:var(--mut);font-weight:600}
+  button{background:transparent;color:var(--txt);border:1px solid var(--line);border-radius:9px;padding:8px 14px;font:inherit;font-size:13px;cursor:pointer}
+  button:hover{border-color:var(--bad);color:var(--bad)}
+  ul{list-style:none;margin:0;padding:0;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  li{display:flex;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--line);font-size:14px}
+  li:first-child{border-top:0} li .t{color:var(--mut);font-variant-numeric:tabular-nums}
+  li.empty{color:var(--mut);justify-content:center}
+  @media (max-width:640px){.holes{grid-template-columns:1fr}.tot .v{font-size:32px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Third <span>Zone</span> · ხვრელების მთვლელი</h1>
+  <div class="status">
+    <span><i class="dot" id="netDot"></i><span id="netTxt">კავშირი…</span></span>
+    <span><i class="dot" id="devDot"></i><span id="devTxt">ESP32: უცნობია</span></span>
+  </div>
+</header>
+<main>
+  <div class="totals">
+    <div class="tot"><div class="l">სულ მოხვედრა</div><div class="v" id="total">0</div></div>
+    <div class="tot"><div class="l">ქულა</div><div class="v" id="score">0</div></div>
+  </div>
+  <div class="holes">
+    <div class="hole" data-id="small"><div class="ringbox"><div class="ring"></div></div><div class="name">პატარა ხვრელი</div><div class="pts" id="pts-small"></div><div class="cnt" id="c-small">0</div></div>
+    <div class="hole" data-id="medium"><div class="ringbox"><div class="ring"></div></div><div class="name">საშუალო ხვრელი</div><div class="pts" id="pts-medium"></div><div class="cnt" id="c-medium">0</div></div>
+    <div class="hole" data-id="large"><div class="ringbox"><div class="ring"></div></div><div class="name">დიდი ხვრელი</div><div class="pts" id="pts-large"></div><div class="cnt" id="c-large">0</div></div>
+  </div>
+  <div class="row"><h2>ბოლო მოხვედრები</h2><button id="reset">განულება</button></div>
+  <ul id="log"><li class="empty">ჯერ მოხვედრა არ ყოფილა</li></ul>
+</main>
+<script>
+// ====== უნდა ემთხვეოდეს ESP32-ის კოდში არსებულ MQTT_BASE-ს ======
+const MQTT_BASE = "thirdzone/80g10v5p";
+const MQTT_URL  = "wss://broker.hivemq.com:8884/mqtt";
+// ===================================================================
+const NAMES = {small:"პატარა", medium:"საშუალო", large:"დიდი"};
+const $ = id => document.getElementById(id);
+let lastSeq = -1, hits = [];
+
+function setDot(el, txtEl, state, txt){ el.className = "dot " + state; txtEl.textContent = txt; }
+
+function render(s){
+  if (!s || typeof s !== "object") return;
+  for (const h of (s.holes || [])) {
+    if ($("c-"+h.id)) $("c-"+h.id).textContent = h.count;
+    if ($("pts-"+h.id)) $("pts-"+h.id).textContent = h.points + " ქულა";
+  }
+  $("total").textContent = s.total ?? 0;
+  $("score").textContent = s.score ?? 0;
+  if (typeof s.seq === "number" && s.seq !== lastSeq) {
+    if (lastSeq !== -1 && s.seq > lastSeq && s.last) flash(s.last);
+    lastSeq = s.seq;
+  }
+  if (s.total === 0) { hits = []; drawLog(); }
+}
+
+function flash(id){
+  const el = document.querySelector('.hole[data-id="'+id+'"]');
+  if (!el) return;
+  el.classList.add("hit"); setTimeout(() => el.classList.remove("hit"), 900);
+  hits.unshift({id, t:new Date()}); hits = hits.slice(0, 15); drawLog();
+}
+
+function drawLog(){
+  const ul = $("log");
+  if (!hits.length) { ul.innerHTML = '<li class="empty">ჯერ მოხვედრა არ ყოფილა</li>'; return; }
+  ul.innerHTML = hits.map(h => '<li><span>'+NAMES[h.id]+' ხვრელი</span><span class="t">'+h.t.toLocaleTimeString("ka-GE")+'</span></li>').join("");
+}
+
+// ---- MQTT (მუშაობს ნებისმიერი ადგილიდან) ----
+let client = null;
+if (window.mqtt) {
+  client = mqtt.connect(MQTT_URL, {clientId:"web-"+Math.random().toString(16).slice(2,10), reconnectPeriod:3000, connectTimeout:8000});
+  client.on("connect", () => { setDot($("netDot"), $("netTxt"), "ok", "ონლაინ"); client.subscribe(MQTT_BASE+"/#"); });
+  client.on("reconnect", () => setDot($("netDot"), $("netTxt"), "wait", "ვუკავშირდები…"));
+  client.on("offline", () => setDot($("netDot"), $("netTxt"), "", "ოფლაინ"));
+  client.on("message", (topic, msg) => {
+    const sub = topic.slice(MQTT_BASE.length + 1), txt = msg.toString();
+    if (sub === "state") { try { render(JSON.parse(txt)); } catch(e){} }
+    else if (sub === "status") {
+      txt === "online" ? setDot($("devDot"), $("devTxt"), "ok", "ESP32: ჩართულია")
+                       : setDot($("devDot"), $("devTxt"), "", "ESP32: გამორთულია");
+    }
+  });
+} else {
+  setDot($("netDot"), $("netTxt"), "", "MQTT ბიბლიოთეკა ვერ ჩაიტვირთა");
+}
+
+// ---- ლოკალური რეჟიმი: თუ გვერდი პირდაპირ ESP32-დან გაიხსნა (ინტერნეტის გარეშეც მუშაობს) ----
+async function pollLocal(){
+  try {
+    const r = await fetch("/api/state", {cache:"no-store"});
+    if (!r.ok) return;
+    render(await r.json());
+    if (!client || !client.connected) setDot($("devDot"), $("devTxt"), "ok", "ESP32: ჩართულია (ლოკალურად)");
+    setTimeout(pollLocal, 400);
+  } catch(e) {}
+}
+if (location.protocol.startsWith("http")) pollLocal();
+
+$("reset").onclick = async () => {
+  if (!confirm("ყველა მთვლელი განულდეს?")) return;
+  if (client && client.connected) client.publish(MQTT_BASE+"/cmd", "reset");
+  else { try { await fetch("/api/reset", {method:"POST"}); } catch(e){} }
+};
+</script>
+</body>
+</html>
