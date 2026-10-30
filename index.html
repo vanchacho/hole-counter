@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Third Zone — ხვრელები</title>
+<title>ხვრელების მთვლელი</title>
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <style>
   :root{--bg:#0d1410;--card:#15201a;--line:#24342a;--txt:#e8f1ea;--mut:#8aa293;--acc:#3ddc84;--warn:#ffb020;--bad:#ff5a5a}
@@ -34,6 +34,8 @@
   h2{font-size:15px;margin:0;color:var(--mut);font-weight:600}
   button{background:transparent;color:var(--txt);border:1px solid var(--line);border-radius:9px;padding:8px 14px;font:inherit;font-size:13px;cursor:pointer}
   button:hover{border-color:var(--bad);color:var(--bad)}
+  nav a{color:var(--acc);text-decoration:none;font-size:14px;border:1px solid var(--line);border-radius:9px;padding:7px 12px}
+  nav a:hover{border-color:var(--acc)}
   ul{list-style:none;margin:0;padding:0;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
   li{display:flex;justify-content:space-between;padding:10px 16px;border-top:1px solid var(--line);font-size:14px}
   li:first-child{border-top:0} li .t{color:var(--mut);font-variant-numeric:tabular-nums}
@@ -43,7 +45,8 @@
 </head>
 <body>
 <header>
-  <h1>Third <span>Zone</span> · ხვრელების მთვლელი</h1>
+  <h1>ხვრელების <span>მთვლელი</span></h1>
+  <nav><a href="history.html">ისტორია →</a></nav>
   <div class="status">
     <span><i class="dot" id="netDot"></i><span id="netTxt">კავშირი…</span></span>
     <span><i class="dot" id="devDot"></i><span id="devTxt">ESP32: უცნობია</span></span>
@@ -59,12 +62,12 @@
     <div class="hole" data-id="medium"><div class="ringbox"><div class="ring"></div></div><div class="name">საშუალო ხვრელი</div><div class="pts" id="pts-medium"></div><div class="cnt" id="c-medium">0</div></div>
     <div class="hole" data-id="large"><div class="ringbox"><div class="ring"></div></div><div class="name">დიდი ხვრელი</div><div class="pts" id="pts-large"></div><div class="cnt" id="c-large">0</div></div>
   </div>
-  <div class="row"><h2>ბოლო მოხვედრები</h2><button id="reset">განულება</button></div>
+  <div class="row"><h2>ბოლო მოხვედრები</h2><button id="reset">დასრულება და განულება</button></div>
   <ul id="log"><li class="empty">ჯერ მოხვედრა არ ყოფილა</li></ul>
 </main>
 <script>
 // ====== უნდა ემთხვეოდეს ESP32-ის კოდში არსებულ MQTT_BASE-ს ======
-const MQTT_BASE = "thirdzone/80g10v5p";
+const MQTT_BASE = "holecounter/80g10v5p";
 const MQTT_URL  = "wss://broker.hivemq.com:8884/mqtt";
 // ===================================================================
 const NAMES = {small:"პატარა", medium:"საშუალო", large:"დიდი"};
@@ -130,10 +133,11 @@ async function pollLocal(){
     setTimeout(pollLocal, 400);
   } catch(e) {}
 }
-if (location.protocol.startsWith("http")) pollLocal();
+// GitHub Pages-ზე ან ფაილად გახსნისას ლოკალური API არ არსებობს
+if (location.protocol.startsWith("http") && !location.hostname.endsWith("github.io")) pollLocal();
 
 $("reset").onclick = async () => {
-  if (!confirm("ყველა მთვლელი განულდეს?")) return;
+  if (!confirm("თამაში დასრულდეს? შედეგი ისტორიაში შეინახება და მთვლელები განულდება.")) return;
   if (client && client.connected) client.publish(MQTT_BASE+"/cmd", "reset");
   else { try { await fetch("/api/reset", {method:"POST"}); } catch(e){} }
 };
