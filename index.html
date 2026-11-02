@@ -6,7 +6,7 @@
 <title>ხვრელების მთვლელი</title>
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <style>
-  :root{--bg:#0d1410;--card:#15201a;--line:#24342a;--txt:#e8f1ea;--mut:#8aa293;--acc:#3ddc84;--warn:#ffb020;--bad:#ff5a5a}
+  :root{--bg:#0d1410;--card:#15201a;--line:#24342a;--txt:#e8f1ea;--mut:#8aa293;--acc:#3ddc84;--warn:#ffb020;--bad:#ff5a5a;--miss:#ff7a45}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
   header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 22px;border-bottom:1px solid var(--line);flex-wrap:wrap}
@@ -18,45 +18,63 @@
   main{max-width:980px;margin:0 auto;padding:22px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
   h2{font-size:15px;margin:0 0 12px;color:var(--mut);font-weight:600}
-  .players{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
-  .pbtn{background:#0f1a13;border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:14px 10px;font:inherit;font-size:15px;cursor:pointer;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .pbtn:hover{border-color:var(--acc);color:var(--acc)}
-  .new{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
-  input{flex:1;min-width:160px;background:#0f1a13;color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit;font-size:16px}
+  .hidden{display:none !important}
+  /* არჩევა */
+  .modes{display:flex;gap:8px;margin-bottom:16px}
+  .modes button{flex:1;background:#0f1a13;border:1px solid var(--line);color:var(--mut);border-radius:10px;padding:12px;font:inherit;font-size:15px;cursor:pointer}
+  .modes button.on{border-color:var(--acc);color:var(--acc);font-weight:700}
+  .pick{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .pick.solo{grid-template-columns:1fr}
+  .pick.solo .pb{display:none}
+  .pick label{font-size:13px;color:var(--mut);display:block;margin-bottom:6px}
+  input{width:100%;background:#0f1a13;color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit;font-size:16px}
   input:focus{outline:none;border-color:var(--acc)}
-  button.main{background:var(--acc);color:#06240f;border:0;border-radius:10px;padding:12px 18px;font:inherit;font-size:15px;font-weight:700;cursor:pointer}
-  button.main:disabled{opacity:.4;cursor:not-allowed}
-  button.ghost{background:transparent;color:var(--mut);border:1px solid var(--line);border-radius:10px;padding:12px 16px;font:inherit;font-size:14px;cursor:pointer}
-  button.ghost:hover{border-color:var(--bad);color:var(--bad)}
-  .who{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
-  .who .n{font-size:26px;font-weight:700} .who .n small{font-size:13px;color:var(--mut);font-weight:400;margin-right:6px}
-  .totals{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}
-  .tot{background:#0f1a13;border:1px solid var(--line);border-radius:12px;padding:12px 14px}
-  .tot .l{font-size:12px;color:var(--mut)} .tot .v{font-size:32px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
-  .tot.miss .v{color:var(--warn)} .tot.hit .v{color:var(--acc)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chip{background:#0f1a13;border:1px solid var(--line);color:var(--txt);border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}
+  .chip:hover{border-color:var(--acc);color:var(--acc)}
+  button.main{background:var(--acc);color:#06240f;border:0;border-radius:10px;padding:14px 18px;font:inherit;font-size:16px;font-weight:700;cursor:pointer;width:100%;margin-top:16px}
+  button.ghost{background:transparent;color:var(--mut);border:1px solid var(--line);border-radius:10px;padding:11px 14px;font:inherit;font-size:14px;cursor:pointer}
+  button.ghost:hover{border-color:var(--txt);color:var(--txt)}
+  button.ghost.red:hover{border-color:var(--bad);color:var(--bad)}
+  .err{color:var(--bad);font-size:13px;margin-top:8px;min-height:18px}
+  /* თამაში */
+  .players{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+  .players.solo{grid-template-columns:1fr}
+  .pl{background:#0f1a13;border:2px solid var(--line);border-radius:12px;padding:14px 16px;cursor:pointer}
+  .pl.cur{border-color:var(--acc);box-shadow:0 0 0 3px rgba(61,220,132,.15)}
+  .pl.done{opacity:.6}
+  .pl .n{font-size:14px;color:var(--mut);display:flex;justify-content:space-between;gap:8px}
+  .pl .n b{color:var(--txt);font-size:16px}
+  .pl .s{font-size:48px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+  .pl .t{font-size:13px;color:var(--mut)}
+  .pl .bar{height:6px;background:#1c2a21;border-radius:3px;margin-top:8px;overflow:hidden}
+  .pl .bar i{display:block;height:100%;background:var(--acc);width:0}
+  .turn{font-size:15px;margin-bottom:10px} .turn b{color:var(--acc)}
   .holes{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-  .hole{background:#0f1a13;border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center;transition:border-color .3s, box-shadow .3s}
-  .ringbox{height:96px;display:flex;align-items:center;justify-content:center;margin-bottom:6px}
+  .hole{background:#0f1a13;border:1px solid var(--line);border-radius:12px;padding:12px;text-align:center;transition:border-color .3s, box-shadow .3s}
+  .ringbox{height:90px;display:flex;align-items:center;justify-content:center;margin-bottom:6px}
   .ring{border-radius:50%;border:4px solid #2c4a37;background:radial-gradient(circle,#050806 55%,#0f1a13);transition:all .25s}
-  .hole[data-id=small] .ring{width:44px;height:44px}
-  .hole[data-id=medium] .ring{width:66px;height:66px}
-  .hole[data-id=large] .ring{width:88px;height:88px}
+  .hole[data-id=small] .ring{width:40px;height:40px}
+  .hole[data-id=medium] .ring{width:62px;height:62px}
+  .hole[data-id=large] .ring{width:84px;height:84px}
   .hole .name{font-weight:600;font-size:14px} .hole .pts{font-size:12px;color:var(--mut);margin-top:2px}
-  .hole .cnt{font-size:38px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+  .hole .cnt{font-size:30px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
   .hole.hit{border-color:var(--acc);box-shadow:0 0 0 3px rgba(61,220,132,.25)}
   .hole.hit .ring{border-color:var(--acc);background:radial-gradient(circle,#3ddc84 0 20%,#050806 60%)}
-  .shots{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px}
-  .shots label{font-size:15px;width:100%}
-  .shots input{max-width:180px;font-size:22px;font-weight:700;text-align:center}
-  .hint{font-size:13px;color:var(--mut);margin-top:8px;min-height:18px}
-  .hint.bad{color:var(--bad)}
-  .actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+  .hole.miss{border-color:var(--miss);box-shadow:0 0 0 3px rgba(255,122,69,.25)}
+  .missbtn{width:100%;margin-top:10px;background:transparent;border:1px solid #5a2f1d;color:var(--miss);border-radius:10px;padding:14px 6px;font:inherit;font-size:15px;font-weight:700;cursor:pointer}
+  .missbtn:hover,.missbtn:active{background:rgba(255,122,69,.12);border-color:var(--miss)}
+  .missbtn:disabled{opacity:.35;cursor:not-allowed}
+  .strip{display:flex;gap:4px;flex-wrap:wrap;margin:14px 0 4px;min-height:22px}
+  .strip span{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#06240f}
+  .strip .h{background:var(--acc)} .strip .m{background:var(--miss)}
+  .hint{font-size:12px;color:var(--mut)}
+  .actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
   .done{border-color:var(--acc)}
-  .done .big{font-size:18px;margin-bottom:8px}
-  .hidden{display:none}
+  .done .big{font-size:18px;margin-bottom:6px} .done .sub{color:var(--mut);font-size:14px;margin-bottom:12px}
   footer{text-align:center;padding:10px 0 26px}
   footer a{color:var(--mut);font-size:12px;text-decoration:none}
-  @media (max-width:640px){.totals{grid-template-columns:repeat(2,1fr)}.holes{grid-template-columns:repeat(3,1fr)}.hole .cnt{font-size:28px}.ringbox{height:70px}.hole[data-id=large] .ring{width:64px;height:64px}.hole[data-id=medium] .ring{width:48px;height:48px}.hole[data-id=small] .ring{width:32px;height:32px}}
+  @media (max-width:640px){.pick{grid-template-columns:1fr}.pl .s{font-size:36px}.hole .cnt{font-size:24px}.ringbox{height:64px}.hole[data-id=large] .ring{width:60px;height:60px}.hole[data-id=medium] .ring{width:44px;height:44px}.hole[data-id=small] .ring{width:30px;height:30px}.missbtn{font-size:13px;padding:14px 2px}}
 </style>
 </head>
 <body>
@@ -68,44 +86,41 @@
   </div>
 </header>
 <main>
-  <!-- შედეგი ბოლო თამაშის შემდეგ -->
+  <!-- ბოლო თამაშის შედეგი -->
   <div class="card done hidden" id="doneCard">
     <div class="big" id="doneTxt"></div>
+    <div class="sub" id="doneSub"></div>
     <button class="ghost" onclick="$('doneCard').classList.add('hidden')">დახურვა</button>
   </div>
 
-  <!-- 1. მოთამაშის არჩევა -->
+  <!-- 1. მოთამაშეების არჩევა -->
   <div class="card" id="pickCard">
-    <h2>აირჩიე მოთამაშე</h2>
-    <div class="players" id="players"></div>
-    <div class="new">
-      <input id="newName" maxlength="40" placeholder="ახალი მოთამაშის სახელი">
-      <button class="main" id="newBtn">დაწყება</button>
+    <div class="modes"><button id="mSolo" class="on">მარტო</button><button id="mDuel">1-vs-1</button></div>
+    <div class="pick solo" id="pick">
+      <div class="pa"><label for="nameA">მოთამაშე 1</label><input id="nameA" maxlength="40" placeholder="სახელი" list="plist" autocomplete="off"><div class="chips" id="chipsA"></div></div>
+      <div class="pb"><label for="nameB">მოთამაშე 2</label><input id="nameB" maxlength="40" placeholder="სახელი" list="plist" autocomplete="off"><div class="chips" id="chipsB"></div></div>
     </div>
+    <datalist id="plist"></datalist>
+    <button class="main" id="startBtn">▶ დაწყება · 50 სროლა</button>
+    <div class="err" id="err"></div>
   </div>
 
   <!-- 2. თამაში -->
   <div class="card hidden" id="playCard">
-    <div class="who"><div class="n"><small>თამაშობს:</small><span id="pName"></span></div></div>
-    <div class="totals">
-      <div class="tot hit"><div class="l">გაიტანა</div><div class="v" id="hits">0</div></div>
-      <div class="tot miss"><div class="l">ააცილა</div><div class="v" id="misses">—</div></div>
-      <div class="tot"><div class="l">სიზუსტე</div><div class="v" id="acc">—</div></div>
-      <div class="tot"><div class="l">ქულა</div><div class="v" id="score">0</div></div>
-    </div>
+    <div class="players" id="players"></div>
+    <div class="turn" id="turn"></div>
     <div class="holes">
-      <div class="hole" data-id="small"><div class="ringbox"><div class="ring"></div></div><div class="name">პატარა</div><div class="pts" id="pts-small"></div><div class="cnt" id="c-small">0</div></div>
-      <div class="hole" data-id="medium"><div class="ringbox"><div class="ring"></div></div><div class="name">საშუალო</div><div class="pts" id="pts-medium"></div><div class="cnt" id="c-medium">0</div></div>
-      <div class="hole" data-id="large"><div class="ringbox"><div class="ring"></div></div><div class="name">დიდი</div><div class="pts" id="pts-large"></div><div class="cnt" id="c-large">0</div></div>
+      <div class="hole" data-id="large"><div class="ringbox"><div class="ring"></div></div><div class="name">დიდი</div><div class="pts" id="pts-large"></div><div class="cnt" id="c-large">0</div><button class="missbtn" data-h="large">✕ ააცილა</button></div>
+      <div class="hole" data-id="medium"><div class="ringbox"><div class="ring"></div></div><div class="name">საშუალო</div><div class="pts" id="pts-medium"></div><div class="cnt" id="c-medium">0</div><button class="missbtn" data-h="medium">✕ ააცილა</button></div>
+      <div class="hole" data-id="small"><div class="ringbox"><div class="ring"></div></div><div class="name">პატარა</div><div class="pts" id="pts-small"></div><div class="cnt" id="c-small">0</div><button class="missbtn" data-h="small">✕ ააცილა</button></div>
     </div>
-    <div class="shots" style="margin-top:18px">
-      <label for="shots">სულ რამდენჯერ დაარტყი?</label>
-      <input id="shots" type="number" min="0" inputmode="numeric" placeholder="0">
-    </div>
-    <div class="hint" id="hint">ჩაწერე დარტყმების რაოდენობა: აცილება = დარტყმა − გატანა.</div>
+    <div class="strip" id="strip"></div>
+    <div class="hint">გატანას დაფა თავისით წერს. თუ ააცილა, დააჭირე „✕ ააცილა“ იმ ხვრელის ქვეშ, რომელსაც ესროდა.</div>
     <div class="actions">
-      <button class="main" id="finishBtn">დასრულება და შენახვა</button>
-      <button class="ghost" id="cancelBtn">გაუქმება</button>
+      <button class="ghost" id="undoBtn">↶ ბოლო სროლის გაუქმება</button>
+      <button class="ghost" id="passBtn">რიგის გადაცემა ⇄</button>
+      <button class="ghost" id="endBtn">დასრულება</button>
+      <button class="ghost red" id="cancelBtn">გაუქმება</button>
     </div>
   </div>
 </main>
@@ -115,13 +130,14 @@
 const MQTT_BASE = "holecounter/80g10v5p";
 const MQTT_URL  = "wss://broker.hivemq.com:8884/mqtt";
 // ===================================================================
-
 const $ = id => document.getElementById(id);
 const LOCAL = location.protocol.startsWith("http") && !location.hostname.endsWith("github.io");
-let state = null, lastSeq = -1, espPlayers = [];
+const HOLE_OF_TIER = {0:"large", 1:"medium", 3:"small"}, LETTER = {large:"დ", medium:"ს", small:"პ"};
+let state = null, lastSeq = -1, espPlayers = [], duel = false;
 
 function setDot(el, txtEl, st, txt){ el.className = "dot " + st; txtEl.textContent = txt; }
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function clean(n){ return n.replace(/["\\|\n\r\t]/g, "").trim().slice(0, 40); }
 
 // ბრძანება ESP32-ს: ინტერნეტით (MQTT) ან, თუ გვერდი ESP32-დან გაიხსნა, პირდაპირ
 async function send(cmd){
@@ -131,82 +147,114 @@ async function send(cmd){
   return false;
 }
 
-function drawPlayers(){
-  if (!espPlayers.length) { $("players").innerHTML = '<div style="color:var(--mut);font-size:14px">ჯერ მოთამაშე არ არის. ჩაწერე სახელი და დააჭირე „დაწყება“.</div>'; return; }
-  $("players").innerHTML = espPlayers.map(p => '<button class="pbtn" data-p="'+esc(p)+'">'+esc(p)+'</button>').join("");
-}
-$("players").onclick = e => { const b = e.target.closest(".pbtn"); if (b) start(b.dataset.p); };
-$("newBtn").onclick = () => { const n = $("newName").value.trim(); if (n) start(n); else $("newName").focus(); };
-$("newName").onkeydown = e => { if (e.key === "Enter") $("newBtn").click(); };
-
-async function start(name){
-  name = name.replace(/["\\\n\r\t]/g, "").trim().slice(0, 40);
-  if (!name) return;
-  if (state && state.player && !confirm(state.player + "-ის თამაში ჯერ არ დასრულებულა. გაუქმდეს და დაიწყოს ახალი?")) return;
-  if (await send("start:" + name)) { $("newName").value = ""; $("shots").value = ""; }
-}
-
-function hitsNow(){ return state ? (state.total || 0) : 0; }
-function updateMiss(){
-  const h = hitsNow(), v = $("shots").value.trim(), n = parseInt(v, 10);
-  $("hits").textContent = h;
-  if (v === "" || isNaN(n)) { $("misses").textContent = "—"; $("acc").textContent = "—"; $("hint").className = "hint"; $("hint").textContent = "ჩაწერე დარტყმების რაოდენობა: აცილება = დარტყმა − გატანა."; return; }
-  if (n < h) { $("misses").textContent = "—"; $("acc").textContent = "—"; $("hint").className = "hint bad"; $("hint").textContent = "დარტყმა გატანაზე (" + h + ") ნაკლები ვერ იქნება."; return; }
-  $("misses").textContent = n - h;
-  $("acc").textContent = n ? Math.round(h * 100 / n) + "%" : "—";
-  $("hint").className = "hint"; $("hint").textContent = n + " დარტყმა: " + h + " გაიტანა, " + (n - h) + " ააცილა.";
-}
-$("shots").oninput = updateMiss;
-
-$("finishBtn").onclick = async () => {
-  const h = hitsNow(), n = parseInt($("shots").value, 10);
-  if (isNaN(n)) { $("hint").className = "hint bad"; $("hint").textContent = "ჯერ ჩაწერე, სულ რამდენჯერ დაარტყი."; $("shots").focus(); return; }
-  if (n < h) { updateMiss(); return; }
-  const who = state.player, sc = state.score || 0;
-  if (await send("finish:" + n)) {
-    $("doneTxt").textContent = who + ": " + n + " დარტყმა · " + h + " გაიტანა · " + (n - h) + " ააცილა · " + (n ? Math.round(h*100/n) : 0) + "% · " + sc + " ქულა. შენახულია ✔";
-    $("doneCard").classList.remove("hidden");
-    $("shots").value = "";
+// სროლების ჩანაწერი "q" -> [{tier, hit, iv}]
+function decode(q){
+  const out = [];
+  for (let i = 0; i + 2 < q.length; i += 3) {
+    const c = q.charCodeAt(i) - 48;
+    out.push({tier: c >> 1, hit: (c & 1) === 1, iv: parseInt(q.substr(i + 1, 2), 36) / 10});
   }
-};
-$("cancelBtn").onclick = () => { if (confirm("თამაში გაუქმდეს? შედეგი არ შეინახება.")) { send("cancel"); $("shots").value = ""; } };
+  return out;
+}
 
-function flash(id){
+// ---- მოთამაშეების არჩევა ----
+function setMode(d){
+  duel = d;
+  $("mSolo").classList.toggle("on", !d); $("mDuel").classList.toggle("on", d);
+  $("pick").classList.toggle("solo", !d);
+  $("startBtn").textContent = d ? "▶ დაწყება · 50 სროლა თითოს" : "▶ დაწყება · 50 სროლა";
+}
+$("mSolo").onclick = () => setMode(false);
+$("mDuel").onclick = () => setMode(true);
+
+function drawPlayers(){
+  $("plist").innerHTML = espPlayers.map(p => '<option value="' + esc(p) + '">').join("");
+  const chips = espPlayers.slice(-12).reverse().map(p => '<button class="chip" data-p="' + esc(p) + '">' + esc(p) + '</button>').join("");
+  $("chipsA").innerHTML = chips; $("chipsB").innerHTML = chips;
+}
+$("chipsA").onclick = e => { const b = e.target.closest(".chip"); if (b) $("nameA").value = b.dataset.p; };
+$("chipsB").onclick = e => { const b = e.target.closest(".chip"); if (b) $("nameB").value = b.dataset.p; };
+
+$("startBtn").onclick = async () => {
+  const a = clean($("nameA").value), b = duel ? clean($("nameB").value) : "";
+  $("err").textContent = "";
+  if (!a) { $("err").textContent = "ჩაწერე მოთამაშის სახელი."; $("nameA").focus(); return; }
+  if (duel && !b) { $("err").textContent = "1-vs-1-ისთვის ჩაწერე მეორე მოთამაშეც."; $("nameB").focus(); return; }
+  if (duel && a === b) { $("err").textContent = "ორი სხვადასხვა მოთამაშე უნდა იყოს."; return; }
+  if (state && state.active && !confirm("თამაში უკვე მიდის. გაუქმდეს და დაიწყოს ახალი?")) return;
+  if (await send("start:" + a + (b ? "|" + b : ""))) { $("doneCard").classList.add("hidden"); }
+};
+
+// ---- თამაშის ღილაკები ----
+document.querySelectorAll(".missbtn").forEach(b => b.onclick = () => send("miss:" + b.dataset.h));
+$("undoBtn").onclick = () => send("undo");
+$("passBtn").onclick = () => send("pass");
+$("players").onclick = e => { const c = e.target.closest(".pl"); if (c && state && state.p.length === 2) send("turn:" + c.dataset.i); };
+$("endBtn").onclick = () => { if (confirm("თამაში ახლა დასრულდეს? შეინახება როგორც დაუსრულებელი (რეიტინგზე და top score-ზე არ იმოქმედებს).")) send("end"); };
+$("cancelBtn").onclick = () => { if (confirm("თამაში გაუქმდეს? არაფერი შეინახება.")) send("cancel"); };
+
+function flash(id, hit){
   const el = document.querySelector('.hole[data-id="'+id+'"]');
   if (!el) return;
-  el.classList.add("hit"); setTimeout(() => el.classList.remove("hit"), 900);
+  const c = hit ? "hit" : "miss";
+  el.classList.add(c); setTimeout(() => el.classList.remove(c), 800);
+}
+
+function showDone(s){
+  const ps = s.p;
+  if (ps.length === 2) {
+    const [a, b] = ps;
+    $("doneTxt").textContent = a.s === b.s ? "ფრე! " + a.s + " : " + b.s : (a.s > b.s ? a.n : b.n) + " მოიგო · " + a.s + " : " + b.s;
+  } else $("doneTxt").textContent = ps[0].n + ": " + ps[0].s + " ქულა";
+  $("doneSub").textContent = ps.map(p => p.n + " — " + p.t + " სროლა, " + p.h + " გატანა, " + (p.t - p.h) + " აცილება (" + (p.t ? Math.round(100 * p.h / p.t) : 0) + "%)").join(" · ") + " · შენახულია ✔";
+  $("doneCard").classList.remove("hidden");
 }
 
 function render(s){
-  if (!s || typeof s !== "object") return;
-  state = s;
-  for (const h of (s.holes || [])) {
-    if ($("c-"+h.id)) $("c-"+h.id).textContent = h.count;
-    if ($("pts-"+h.id)) $("pts-"+h.id).textContent = h.points + " ქულა";
-  }
-  $("score").textContent = s.score ?? 0;
+  if (!s || typeof s !== "object" || !Array.isArray(s.p)) return;
   if (typeof s.seq === "number" && s.seq !== lastSeq) {
-    if (lastSeq !== -1 && s.seq > lastSeq && s.last && s.total > 0) flash(s.last);
+    if (lastSeq !== -1 && s.seq > lastSeq && s.last) flash(s.last, s.hit);
     lastSeq = s.seq;
   }
-  const playing = !!s.player;
-  $("pickCard").classList.toggle("hidden", playing);
-  $("playCard").classList.toggle("hidden", !playing);
-  if (playing) $("pName").textContent = s.player;
-  updateMiss();
+  state = s;
+  for (const id in (s.pts || {})) if ($("pts-"+id)) $("pts-"+id).textContent = s.pts[id] + " ქულა";
+
+  $("pickCard").classList.toggle("hidden", s.active);
+  $("playCard").classList.toggle("hidden", !s.active);
+  if (!s.active) return;
+
+  const max = s.max || 50, two = s.p.length === 2;
+  $("players").className = "players" + (two ? "" : " solo");
+  $("players").innerHTML = s.p.map((p, i) =>
+    '<div class="pl' + (i === s.cur ? " cur" : "") + (p.t >= max ? " done" : "") + '" data-i="' + i + '">' +
+    '<div class="n"><b>' + esc(p.n) + '</b><span>' + (i === s.cur ? "▶ რიგი" : "") + '</span></div>' +
+    '<div class="s">' + p.s + '</div>' +
+    '<div class="t">სროლა ' + p.t + '/' + max + ' · გატანა ' + p.h + ' · აცილება ' + (p.t - p.h) + '</div>' +
+    '<div class="bar"><i style="width:' + (100 * p.t / max) + '%"></i></div></div>').join("");
+  const c = s.p[s.cur] || s.p[0];
+  $("turn").innerHTML = two ? 'რიგი: <b>' + esc(c.n) + '</b>' + (two ? ' <span class="hint">(ბარათზე დაჭერით რიგი გადადის)</span>' : '') : '';
+  for (const id of ["large", "medium", "small"]) $("c-"+id).textContent = c[id] || 0;
+  document.querySelectorAll(".missbtn").forEach(b => b.disabled = c.t >= max);
+  $("passBtn").classList.toggle("hidden", !two);
+  // ბოლო 15 სროლა
+  $("strip").innerHTML = decode(c.q).slice(-15).map(x => {
+    const h = HOLE_OF_TIER[x.tier];
+    return '<span class="' + (x.hit ? "h" : "m") + '" title="' + (x.hit ? "გაიტანა" : "ააცილა") + '">' + LETTER[h] + '</span>';
+  }).join("");
 }
 
 // ---- MQTT (მუშაობს ნებისმიერი ადგილიდან) ----
 let client = null;
 if (window.mqtt) {
   client = mqtt.connect(MQTT_URL, {clientId:"web-"+Math.random().toString(16).slice(2,10), reconnectPeriod:3000, connectTimeout:8000});
-  client.on("connect", () => { setDot($("netDot"), $("netTxt"), "ok", "ონლაინ"); client.subscribe([MQTT_BASE+"/state", MQTT_BASE+"/status", MQTT_BASE+"/players"]); });
+  client.on("connect", () => { setDot($("netDot"), $("netTxt"), "ok", "ონლაინ"); client.subscribe([MQTT_BASE+"/state", MQTT_BASE+"/status", MQTT_BASE+"/players", MQTT_BASE+"/history"]); });
   client.on("reconnect", () => setDot($("netDot"), $("netTxt"), "wait", "ვუკავშირდები…"));
   client.on("offline", () => setDot($("netDot"), $("netTxt"), "", "ოფლაინ"));
   client.on("message", (topic, msg) => {
     const sub = topic.slice(MQTT_BASE.length + 1), txt = msg.toString();
     if (sub === "state") { try { render(JSON.parse(txt)); } catch(e){} }
     else if (sub === "players") { try { espPlayers = JSON.parse(txt || "[]"); drawPlayers(); } catch(e){} }
+    else if (sub === "history") { try { onHistory(JSON.parse(txt || "[]")); } catch(e){} }
     else if (sub === "status") {
       txt === "online" ? setDot($("devDot"), $("devTxt"), "ok", "დაფა: ჩართულია")
                        : setDot($("devDot"), $("devTxt"), "", "დაფა: გამორთულია");
@@ -214,6 +262,16 @@ if (window.mqtt) {
   });
 } else {
   setDot($("netDot"), $("netTxt"), "", "MQTT ბიბლიოთეკა ვერ ჩაიტვირთა");
+}
+
+// ახალი თამაში ისტორიაში -> ზუსტი შედეგის ჩვენება (ბოლო სროლის ჩათვლით)
+let histLen = -1;
+function onHistory(h){
+  if (histLen !== -1 && h.length > histLen) {
+    const g = h[h.length - 1];
+    if (g && Array.isArray(g.p) && !g.ab) showDone({p: g.p.map(p => ({n:p.n, s:p.s, h:p.h, t:p.t}))});
+  }
+  histLen = h.length;
 }
 
 // ---- ლოკალური რეჟიმი: თუ გვერდი პირდაპირ ESP32-დან გაიხსნა (ინტერნეტის გარეშეც მუშაობს) ----
