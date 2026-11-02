@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>სტატისტიკა</title>
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+  :root{--bg:#0d1410;--card:#15201a;--line:#24342a;--txt:#e8f1ea;--mut:#8aa293;--acc:#3ddc84;--warn:#ffb020;--bad:#ff5a5a}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 22px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  h1{font-size:20px;margin:0;letter-spacing:.3px}
+  h1 span{color:var(--acc)}
+  .status{display:flex;gap:14px;font-size:13px;color:var(--mut);flex-wrap:wrap;align-items:center}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--bad);margin-right:6px;vertical-align:middle}
+  .dot.ok{background:var(--acc)} .dot.wait{background:var(--warn)}
+  nav{display:flex;gap:8px}
+  nav a,nav button{color:var(--acc);text-decoration:none;font:inherit;font-size:13px;background:transparent;border:1px solid var(--line);border-radius:9px;padding:7px 12px;cursor:pointer}
+  nav a:hover,nav button:hover{border-color:var(--acc)}
+  main{max-width:1100px;margin:0 auto;padding:22px}
+  .totals{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+  .tot{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .tot .l{font-size:12px;color:var(--mut)} .tot .v{font-size:28px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+  h2{font-size:15px;margin:26px 0 10px;color:var(--mut);font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .wrap{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+  th,td{padding:9px 12px;text-align:right;white-space:nowrap;border-top:1px solid var(--line)}
+  th{color:var(--mut);font-weight:600;font-size:12px;border-top:0;cursor:pointer;user-select:none}
+  th.l,td.l{text-align:left}
+  td.acc{color:var(--acc);font-weight:700} td.miss{color:var(--warn)}
+  .tag{font-size:11px;color:var(--mut);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+  .tag.old{color:var(--warn);border-color:#4a3a14}
+  .empty{color:var(--mut);text-align:center;padding:22px}
+  .live{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;font-size:14px}
+  .live b{color:var(--acc)}
+  .btns{display:flex;gap:8px;flex-wrap:wrap}
+  button.sm{background:transparent;color:var(--txt);border:1px solid var(--line);border-radius:9px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer}
+  button.sm:hover{border-color:var(--bad);color:var(--bad)}
+  button.sm.ok:hover{border-color:var(--acc);color:var(--acc)}
+  select{background:#0f1a13;color:var(--txt);border:1px solid var(--line);border-radius:9px;padding:7px 10px;font:inherit;font-size:13px}
+  .note{font-size:12px;color:var(--mut);margin-top:8px}
+  /* პაროლის ფანჯარა */
+  #gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:10;padding:16px}
+  #gate form{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px;width:100%;max-width:340px}
+  #gate h3{margin:0 0 14px;font-size:17px}
+  #gate input{width:100%;background:#0f1a13;color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit;font-size:18px;letter-spacing:3px;text-align:center}
+  #gate input:focus{outline:none;border-color:var(--acc)}
+  #gate button{width:100%;margin-top:12px;background:var(--acc);color:#06240f;border:0;border-radius:10px;padding:12px;font:inherit;font-weight:700;font-size:15px;cursor:pointer}
+  #gate .err{color:var(--bad);font-size:13px;min-height:18px;margin-top:8px;text-align:center}
+  #gate a{display:block;text-align:center;margin-top:12px;color:var(--mut);font-size:13px}
+  body.locked main,body.locked header{visibility:hidden}
+  @media (max-width:760px){.totals{grid-template-columns:repeat(2,1fr)}.tot .v{font-size:22px}}
+</style>
+</head>
+<body class="locked">
+<div id="gate">
+  <form id="gateForm">
+    <h3>🔒 შესასვლელად ჩაწერე პაროლი</h3>
+    <input id="pw" type="password" inputmode="numeric" autocomplete="off" autofocus>
+    <button type="submit">შესვლა</button>
+    <div class="err" id="pwErr"></div>
+    <a href="index.html">← თამაშზე დაბრუნება</a>
+  </form>
+</div>
+<header>
+  <h1>სტატისტიკა <span>· ადმინი</span></h1>
+  <div class="status">
+    <span><i class="dot" id="netDot"></i><span id="netTxt">კავშირი…</span></span>
+    <span><i class="dot" id="devDot"></i><span id="devTxt">დაფა: უცნობია</span></span>
+    <nav><a href="index.html">თამაში</a><button id="logout">გასვლა</button></nav>
+  </div>
+</header>
+<main>
+  <div class="totals">
+    <div class="tot"><div class="l">თამაში</div><div class="v" id="tGames">0</div></div>
+    <div class="tot"><div class="l">დარტყმა</div><div class="v" id="tShots">0</div></div>
+    <div class="tot"><div class="l">გატანა</div><div class="v" id="tHits">0</div></div>
+    <div class="tot"><div class="l">აცილება</div><div class="v" id="tMiss">0</div></div>
+    <div class="tot"><div class="l">სიზუსტე</div><div class="v" id="tAcc">—</div></div>
+  </div>
+
+  <div class="live">
+    <div id="liveTxt">მიმდინარე თამაში: —</div>
+    <div class="btns">
+      <button class="sm" id="resetBtn">მთვლელის განულება</button>
+      <button class="sm" id="cancelBtn">თამაშის გაუქმება</button>
+    </div>
+  </div>
+
+  <h2>მოთამაშეები <span class="btns"><select id="delSel"></select><button class="sm" id="delBtn">სიიდან წაშლა</button></span></h2>
+  <div class="wrap"><table>
+    <thead><tr><th class="l" data-k="nick">მოთამაშე</th><th data-k="games">თამაში</th><th data-k="shots">დარტყმა</th><th data-k="hits">გატანა</th><th data-k="misses">აცილება</th><th data-k="acc">სიზუსტე</th><th data-k="best">საუკ. ქულა</th><th data-k="score">სულ ქულა</th><th data-k="rating">რეიტინგი*</th><th class="l" data-k="last">ბოლოს</th></tr></thead>
+    <tbody id="pRows"><tr><td colspan="10" class="empty">იტვირთება…</td></tr></tbody>
+  </table></div>
+  <div class="note">* რეიტინგი (Glicko) ძველი სისტემიდანაა (192.168.0.147). სვეტის სათაურზე დაჭერით დალაგდება.</div>
+
+  <h2>ყველა თამაში <span class="btns"><button class="sm ok" id="csvBtn">⬇ CSV</button></span></h2>
+  <div class="wrap"><table>
+    <thead><tr><th class="l">თარიღი</th><th class="l">მოთამაშე</th><th>პატარა</th><th>საშუალო</th><th>დიდი</th><th>გატანა</th><th>დარტყმა</th><th>აცილება</th><th>სიზუსტე</th><th>ქულა</th><th class="l">წყარო</th></tr></thead>
+    <tbody id="gRows"><tr><td colspan="11" class="empty">იტვირთება…</td></tr></tbody>
+  </table></div>
+  <div class="note">„ძველი“ = Third Zone სისტემიდან გადმოტანილი თამაშები (2026-10-08). იქ ქულები 5/10/12/20-ით ითვლებოდა და ხვრელების დაყოფა არ ინახებოდა.</div>
+</main>
+<script>
+// ====== უნდა ემთხვეოდეს ESP32-ის კოდში არსებულ MQTT_BASE-ს ======
+const MQTT_BASE = "holecounter/80g10v5p";
+const MQTT_URL  = "wss://broker.hivemq.com:8884/mqtt";
+// ===================================================================
+const $ = id => document.getElementById(id);
+
+// ---- პაროლი (გვერდზე შესასვლელად) ----
+const PASS_HASH = 201416184;
+function hash(s){ let h = 5381; for (const c of s) h = ((h << 5) + h + c.charCodeAt(0)) >>> 0; return h; }
+function unlock(){ document.body.classList.remove("locked"); $("gate").remove(); boot(); }
+function authed(){ try { return sessionStorage.getItem("hc_auth") === "1"; } catch(e) { return false; } }
+$("gateForm").onsubmit = e => {
+  e.preventDefault();
+  if (hash($("pw").value) === PASS_HASH) { try { sessionStorage.setItem("hc_auth", "1"); } catch(e){} unlock(); }
+  else { $("pwErr").textContent = "პაროლი არასწორია"; $("pw").value = ""; $("pw").focus(); }
+};
+$("logout").onclick = () => { try { sessionStorage.removeItem("hc_auth"); } catch(e){} location.href = "index.html"; };
+if (authed()) unlock();
+
+// ---- ძველი სისტემიდან (192.168.0.147:8080) გადმოტანილი მონაცემები ----
+const IMPORTED = {"players":[{"nick":"WildYak_801","rating":1200,"rd":350,"best":0,"wins":0,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"SwiftYak_325","rating":1200,"rd":350,"best":0,"wins":0,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"EagerWolf_163","rating":1200,"rd":350,"best":0,"wins":0,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"SilentFox_353","rating":1200,"rd":350,"best":0,"wins":0,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"CoolBison_586","rating":1200,"rd":350,"best":0,"wins":0,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"BoldBison_157","rating":1200,"rd":350,"best":0,"wins":0,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"SwiftPanda_160","rating":1200,"rd":350,"best":0,"wins":0,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"RapidLynx_837","rating":1200,"rd":350,"best":0,"wins":0,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"RapidYak_573","rating":1362,"rd":290,"best":180,"wins":1,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"WildCrane_667","rating":1038,"rd":290,"best":91,"wins":0,"losses":1,"draws":0,"created":"2026-10-08"}],"sessions":[{"ts":"2026-10-08T14:34:45","nick":"WildYak_801","shots":10,"hits":6,"score":73,"opp":"SwiftYak_325","won":"yes","abandoned":true},{"ts":"2026-10-08T14:34:45","nick":"SwiftYak_325","shots":9,"hits":4,"score":35,"opp":"WildYak_801","won":"no","abandoned":true},{"ts":"2026-10-08T14:41:51","nick":"EagerWolf_163","shots":0,"hits":0,"score":0,"opp":"SilentFox_353","won":"tie","abandoned":true},{"ts":"2026-10-08T14:41:51","nick":"SilentFox_353","shots":0,"hits":0,"score":0,"opp":"EagerWolf_163","won":"tie","abandoned":true},{"ts":"2026-10-08T14:57:56","nick":"SwiftPanda_160","shots":5,"hits":0,"score":0,"opp":"RapidLynx_837","won":"no","abandoned":true},{"ts":"2026-10-08T14:57:56","nick":"RapidLynx_837","shots":15,"hits":14,"score":176,"opp":"SwiftPanda_160","won":"yes","abandoned":true},{"ts":"2026-10-08T18:51:59","nick":"RapidYak_573","shots":50,"hits":15,"score":180,"opp":"WildCrane_667","won":"yes","abandoned":false},{"ts":"2026-10-08T18:51:59","nick":"WildCrane_667","shots":50,"hits":8,"score":91,"opp":"RapidYak_573","won":"no","abandoned":false}]};
+
+const LOCAL = location.protocol.startsWith("http") && !location.hostname.endsWith("github.io");
+let hist = [], espPlayers = [], sortKey = "best", sortDir = -1, client = null, booted = false;
+
+function esc(s){ return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function setDot(el, txtEl, st, txt){ el.className = "dot " + st; txtEl.textContent = txt; }
+function pct(h, n){ return n ? Math.round(h * 100 / n) + "%" : "—"; }
+function fmtDate(t){ return t ? new Date(t).toLocaleString("ka-GE", {year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit"}) : "—"; }
+
+// ყველა თამაში ერთ ფორმატში: ახალი (ESP32) + ძველი სისტემის
+function allGames(){
+  const neu = hist.map(g => ({
+    t: (g.end || g.start) ? (g.end || g.start) * 1000 : 0, nick: g.player || "(უსახელო)",
+    small: g.small || 0, medium: g.medium || 0, large: g.large || 0,
+    hits: g.total || 0, shots: g.shots ?? null, score: g.score || 0, src: "new"
+  }));
+  const old = IMPORTED.sessions.map(s => ({
+    t: Date.parse(s.ts + "+04:00"), nick: s.nick, small: null, medium: null, large: null,
+    hits: s.hits, shots: s.shots, score: s.score, src: "old", opp: s.opp, won: s.won
+  }));
+  return [...neu, ...old].sort((a, b) => b.t - a.t);
+}
+
+function render(){
+  const games = allGames();
+  // ჯამები
+  const withShots = games.filter(g => g.shots != null);
+  const tS = withShots.reduce((a, g) => a + g.shots, 0), tH = withShots.reduce((a, g) => a + g.hits, 0);
+  $("tGames").textContent = games.length;
+  $("tShots").textContent = tS;
+  $("tHits").textContent = games.reduce((a, g) => a + g.hits, 0);
+  $("tMiss").textContent = tS - tH;
+  $("tAcc").textContent = pct(tH, tS);
+
+  // მოთამაშეები
+  const P = {};
+  const get = n => P[n] ??= {nick:n, games:0, shots:0, hits:0, hitsS:0, best:0, score:0, last:0, rating:null};
+  for (const n of espPlayers) get(n);
+  for (const p of IMPORTED.players) get(p.nick).rating = p.rating;
+  for (const g of games) {
+    const p = get(g.nick);
+    p.games++; p.hits += g.hits; p.score += g.score; p.best = Math.max(p.best, g.score); p.last = Math.max(p.last, g.t);
+    if (g.shots != null) { p.shots += g.shots; p.hitsS += g.hits; }
+  }
+  const rows = Object.values(P).map(p => ({...p, misses: p.shots - p.hitsS, acc: p.shots ? p.hitsS / p.shots : -1}));
+  rows.sort((a, b) => {
+    const x = a[sortKey] ?? -1e9, y = b[sortKey] ?? -1e9;
+    return (typeof x === "string" ? x.localeCompare(y) : x - y) * sortDir;
+  });
+  $("pRows").innerHTML = rows.length ? rows.map(p =>
+    '<tr><td class="l">' + esc(p.nick) + '</td><td>' + p.games + '</td><td>' + p.shots + '</td><td>' + p.hits + '</td>' +
+    '<td class="miss">' + p.misses + '</td><td class="acc">' + pct(p.hitsS, p.shots) + '</td><td>' + p.best + '</td><td>' + p.score + '</td>' +
+    '<td>' + (p.rating ?? "—") + '</td><td class="l">' + (p.last ? fmtDate(p.last) : "—") + '</td></tr>').join("")
+    : '<tr><td colspan="10" class="empty">მოთამაშე ჯერ არ არის</td></tr>';
+
+  $("delSel").innerHTML = espPlayers.length ? espPlayers.map(n => '<option>' + esc(n) + '</option>').join("") : '<option value="">—</option>';
+
+  // თამაშები
+  const n = v => v == null ? "—" : v;
+  $("gRows").innerHTML = games.length ? games.map(g =>
+    '<tr><td class="l">' + fmtDate(g.t) + '</td><td class="l">' + esc(g.nick) + (g.opp ? ' <span class="tag">vs ' + esc(g.opp) + '</span>' : '') + '</td>' +
+    '<td>' + n(g.small) + '</td><td>' + n(g.medium) + '</td><td>' + n(g.large) + '</td><td>' + g.hits + '</td><td>' + n(g.shots) + '</td>' +
+    '<td class="miss">' + (g.shots != null ? g.shots - g.hits : "—") + '</td><td class="acc">' + (g.shots != null ? pct(g.hits, g.shots) : "—") + '</td><td>' + g.score + '</td>' +
+    '<td class="l">' + (g.src === "old" ? '<span class="tag old">ძველი</span>' : '<span class="tag">დაფა</span>') + '</td></tr>').join("")
+    : '<tr><td colspan="11" class="empty">თამაში ჯერ არ არის</td></tr>';
+}
+
+document.querySelectorAll("th[data-k]").forEach(th => th.onclick = () => {
+  const k = th.dataset.k;
+  sortDir = (sortKey === k) ? -sortDir : (k === "nick" ? 1 : -1);
+  sortKey = k; render();
+});
+
+function renderLive(s){
+  if (!s) return;
+  $("liveTxt").innerHTML = s.player
+    ? 'მიმდინარე თამაში: <b>' + esc(s.player) + '</b> · ' + (s.total || 0) + ' გატანა · ' + (s.score || 0) + ' ქულა'
+    : 'მიმდინარე თამაში: არავინ თამაშობს' + ((s.total || 0) ? ' (მთვლელზე ' + s.total + ' გატანაა)' : '');
+}
+
+async function send(cmd){
+  if (client && client.connected) { client.publish(MQTT_BASE+"/cmd", cmd); return; }
+  if (LOCAL) { try { await fetch("/api/cmd", {method:"POST", body:new URLSearchParams({c:cmd})}); setTimeout(loadLocal, 300); return; } catch(e){} }
+  alert("დაფასთან კავშირი არ არის.");
+}
+$("resetBtn").onclick = () => { if (confirm("მთვლელი განულდეს? (მოთამაშე არ შეიცვლება, არაფერი შეინახება)")) send("reset"); };
+$("cancelBtn").onclick = () => { if (confirm("მიმდინარე თამაში გაუქმდეს შენახვის გარეშე?")) send("cancel"); };
+$("delBtn").onclick = () => {
+  const n = $("delSel").value;
+  if (n && confirm(n + " წაიშალოს მოთამაშეების სიიდან? (მისი თამაშები ისტორიაში დარჩება)")) send("delplayer:" + n);
+};
+$("csvBtn").onclick = () => {
+  const head = ["date","player","small","medium","large","hits","shots","misses","score","source"];
+  const lines = allGames().map(g => [g.t ? new Date(g.t).toISOString() : "", g.nick, g.small ?? "", g.medium ?? "", g.large ?? "", g.hits, g.shots ?? "",
+    g.shots != null ? g.shots - g.hits : "", g.score, g.src === "old" ? "old" : "board"].map(v => '"' + String(v).replace(/"/g, '""') + '"').join(","));
+  const blob = new Blob(["﻿" + [head.join(","), ...lines].join("\n")], {type:"text/csv"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "games.csv"; a.click();
+};
+
+async function loadLocal(){
+  try {
+    const [h, p, s] = await Promise.all(["/api/history", "/api/players", "/api/state"].map(u => fetch(u, {cache:"no-store"}).then(r => r.json())));
+    hist = h; espPlayers = p; render(); renderLive(s);
+    if (!client || !client.connected) setDot($("devDot"), $("devTxt"), "ok", "დაფა: ჩართულია (ლოკალურად)");
+  } catch(e) {}
+}
+
+function boot(){
+  if (booted) return; booted = true;
+  render();
+  if (window.mqtt) {
+    client = mqtt.connect(MQTT_URL, {clientId:"webs-"+Math.random().toString(16).slice(2,10), reconnectPeriod:3000, connectTimeout:8000});
+    client.on("connect", () => { setDot($("netDot"), $("netTxt"), "ok", "ონლაინ"); client.subscribe(MQTT_BASE+"/#"); });
+    client.on("reconnect", () => setDot($("netDot"), $("netTxt"), "wait", "ვუკავშირდები…"));
+    client.on("offline", () => setDot($("netDot"), $("netTxt"), "", "ოფლაინ"));
+    client.on("message", (topic, msg) => {
+      const sub = topic.slice(MQTT_BASE.length + 1), txt = msg.toString();
+      try {
+        if (sub === "history") { hist = JSON.parse(txt || "[]"); render(); }
+        else if (sub === "players") { espPlayers = JSON.parse(txt || "[]"); render(); }
+        else if (sub === "state") renderLive(JSON.parse(txt));
+        else if (sub === "status") txt === "online" ? setDot($("devDot"), $("devTxt"), "ok", "დაფა: ჩართულია") : setDot($("devDot"), $("devTxt"), "", "დაფა: გამორთულია");
+      } catch(e){}
+    });
+  } else setDot($("netDot"), $("netTxt"), "", "MQTT ბიბლიოთეკა ვერ ჩაიტვირთა");
+  if (LOCAL) { loadLocal(); setInterval(loadLocal, 3000); }
+}
+</script>
+</body>
+</html>
