@@ -125,7 +125,6 @@ $("gateForm").onsubmit = e => {
   else { $("pwErr").textContent = "პაროლი არასწორია"; $("pw").value = ""; $("pw").focus(); }
 };
 $("logout").onclick = () => { try { sessionStorage.removeItem("hc_auth"); } catch(e){} location.href = "index.html"; };
-if (authed()) unlock();
 
 const LOCAL = location.protocol.startsWith("http") && !location.hostname.endsWith("github.io");
 let hist = [], espPlayers = [], sortKey = "best", sortDir = -1, client = null, booted = false;
@@ -252,6 +251,9 @@ function boot(){
   } else setDot($("netDot"), $("netTxt"), "", "MQTT ბიბლიოთეკა ვერ ჩაიტვირთა");
   if (LOCAL) { loadLocal(); setInterval(loadLocal, 3000); }
 }
+
+// უკვე შესული (ამ ჩანართში პაროლი შეყვანილია) — ბოლოს, როცა ყველაფერი გამოცხადებულია
+if (authed()) unlock();
 </script>
 </body>
 </html>
