@@ -91,17 +91,21 @@
 
   <h2>მოთამაშეები <span class="btns"><select id="delSel"></select><button class="sm" id="delBtn">სიიდან წაშლა</button></span></h2>
   <div class="wrap"><table>
-    <thead><tr><th class="l" data-k="nick">მოთამაშე</th><th data-k="games">თამაში</th><th data-k="shots">დარტყმა</th><th data-k="hits">გატანა</th><th data-k="misses">აცილება</th><th data-k="acc">სიზუსტე</th><th data-k="best">საუკ. ქულა</th><th data-k="score">სულ ქულა</th><th data-k="rating">რეიტინგი*</th><th class="l" data-k="last">ბოლოს</th></tr></thead>
-    <tbody id="pRows"><tr><td colspan="10" class="empty">იტვირთება…</td></tr></tbody>
+    <thead><tr><th class="l" data-k="nick">მოთამაშე</th><th data-k="games">თამაში</th><th data-k="shots">დარტყმა</th><th data-k="hits">გატანა</th><th data-k="misses">აცილება</th><th data-k="acc">სიზუსტე</th><th data-k="best">საუკ. ქულა</th><th data-k="score">სულ ქულა</th><th class="l" data-k="last">ბოლოს</th></tr></thead>
+    <tbody id="pRows"><tr><td colspan="9" class="empty">იტვირთება…</td></tr></tbody>
   </table></div>
-  <div class="note">* რეიტინგი (Glicko) ძველი სისტემიდანაა (192.168.0.147). სვეტის სათაურზე დაჭერით დალაგდება.</div>
+  <div class="note">სვეტის სათაურზე დაჭერით დალაგდება.</div>
 
   <h2>ყველა თამაში <span class="btns"><button class="sm ok" id="csvBtn">⬇ CSV</button></span></h2>
   <div class="wrap"><table>
-    <thead><tr><th class="l">თარიღი</th><th class="l">მოთამაშე</th><th>პატარა</th><th>საშუალო</th><th>დიდი</th><th>გატანა</th><th>დარტყმა</th><th>აცილება</th><th>სიზუსტე</th><th>ქულა</th><th class="l">წყარო</th></tr></thead>
-    <tbody id="gRows"><tr><td colspan="11" class="empty">იტვირთება…</td></tr></tbody>
+    <thead><tr><th class="l">თარიღი</th><th class="l">მოთამაშე</th><th>პატარა</th><th>საშუალო</th><th>დიდი</th><th>გატანა</th><th>დარტყმა</th><th>აცილება</th><th>სიზუსტე</th><th>ქულა</th></tr></thead>
+    <tbody id="gRows"><tr><td colspan="10" class="empty">იტვირთება…</td></tr></tbody>
   </table></div>
-  <div class="note">„ძველი“ = Third Zone სისტემიდან გადმოტანილი თამაშები (2026-10-08). იქ ქულები 5/10/12/20-ით ითვლებოდა და ხვრელების დაყოფა არ ინახებოდა.</div>
+  <h2>მონაცემები</h2>
+  <div class="live">
+    <div>ყველა თამაშის და მოთამაშის სამუდამოდ წაშლა (ESP32-ის მეხსიერებიდანაც).</div>
+    <div class="btns"><button class="sm" id="wipeBtn">ყველაფრის წაშლა</button></div>
+  </div>
 </main>
 <script>
 // ====== უნდა ემთხვეოდეს ESP32-ის კოდში არსებულ MQTT_BASE-ს ======
@@ -123,9 +127,6 @@ $("gateForm").onsubmit = e => {
 $("logout").onclick = () => { try { sessionStorage.removeItem("hc_auth"); } catch(e){} location.href = "index.html"; };
 if (authed()) unlock();
 
-// ---- ძველი სისტემიდან (192.168.0.147:8080) გადმოტანილი მონაცემები ----
-const IMPORTED = {"players":[{"nick":"WildYak_801","rating":1200,"rd":350,"best":0,"wins":0,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"SwiftYak_325","rating":1200,"rd":350,"best":0,"wins":0,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"EagerWolf_163","rating":1200,"rd":350,"best":0,"wins":0,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"SilentFox_353","rating":1200,"rd":350,"best":0,"wins":0,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"CoolBison_586","rating":1200,"rd":350,"best":0,"wins":0,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"BoldBison_157","rating":1200,"rd":350,"best":0,"wins":0,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"SwiftPanda_160","rating":1200,"rd":350,"best":0,"wins":0,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"RapidLynx_837","rating":1200,"rd":350,"best":0,"wins":0,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"RapidYak_573","rating":1362,"rd":290,"best":180,"wins":1,"losses":0,"draws":0,"created":"2026-10-08"},{"nick":"WildCrane_667","rating":1038,"rd":290,"best":91,"wins":0,"losses":1,"draws":0,"created":"2026-10-08"}],"sessions":[{"ts":"2026-10-08T14:34:45","nick":"WildYak_801","shots":10,"hits":6,"score":73,"opp":"SwiftYak_325","won":"yes","abandoned":true},{"ts":"2026-10-08T14:34:45","nick":"SwiftYak_325","shots":9,"hits":4,"score":35,"opp":"WildYak_801","won":"no","abandoned":true},{"ts":"2026-10-08T14:41:51","nick":"EagerWolf_163","shots":0,"hits":0,"score":0,"opp":"SilentFox_353","won":"tie","abandoned":true},{"ts":"2026-10-08T14:41:51","nick":"SilentFox_353","shots":0,"hits":0,"score":0,"opp":"EagerWolf_163","won":"tie","abandoned":true},{"ts":"2026-10-08T14:57:56","nick":"SwiftPanda_160","shots":5,"hits":0,"score":0,"opp":"RapidLynx_837","won":"no","abandoned":true},{"ts":"2026-10-08T14:57:56","nick":"RapidLynx_837","shots":15,"hits":14,"score":176,"opp":"SwiftPanda_160","won":"yes","abandoned":true},{"ts":"2026-10-08T18:51:59","nick":"RapidYak_573","shots":50,"hits":15,"score":180,"opp":"WildCrane_667","won":"yes","abandoned":false},{"ts":"2026-10-08T18:51:59","nick":"WildCrane_667","shots":50,"hits":8,"score":91,"opp":"RapidYak_573","won":"no","abandoned":false}]};
-
 const LOCAL = location.protocol.startsWith("http") && !location.hostname.endsWith("github.io");
 let hist = [], espPlayers = [], sortKey = "best", sortDir = -1, client = null, booted = false;
 
@@ -134,18 +135,14 @@ function setDot(el, txtEl, st, txt){ el.className = "dot " + st; txtEl.textConte
 function pct(h, n){ return n ? Math.round(h * 100 / n) + "%" : "—"; }
 function fmtDate(t){ return t ? new Date(t).toLocaleString("ka-GE", {year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit"}) : "—"; }
 
-// ყველა თამაში ერთ ფორმატში: ახალი (ESP32) + ძველი სისტემის
+// ყველა თამაში ერთ ფორმატში
 function allGames(){
   const neu = hist.map(g => ({
     t: (g.end || g.start) ? (g.end || g.start) * 1000 : 0, nick: g.player || "(უსახელო)",
     small: g.small || 0, medium: g.medium || 0, large: g.large || 0,
     hits: g.total || 0, shots: g.shots ?? null, score: g.score || 0, src: "new"
   }));
-  const old = IMPORTED.sessions.map(s => ({
-    t: Date.parse(s.ts + "+04:00"), nick: s.nick, small: null, medium: null, large: null,
-    hits: s.hits, shots: s.shots, score: s.score, src: "old", opp: s.opp, won: s.won
-  }));
-  return [...neu, ...old].sort((a, b) => b.t - a.t);
+  return neu.sort((a, b) => b.t - a.t);
 }
 
 function render(){
@@ -161,9 +158,8 @@ function render(){
 
   // მოთამაშეები
   const P = {};
-  const get = n => P[n] ??= {nick:n, games:0, shots:0, hits:0, hitsS:0, best:0, score:0, last:0, rating:null};
+  const get = n => P[n] ??= {nick:n, games:0, shots:0, hits:0, hitsS:0, best:0, score:0, last:0};
   for (const n of espPlayers) get(n);
-  for (const p of IMPORTED.players) get(p.nick).rating = p.rating;
   for (const g of games) {
     const p = get(g.nick);
     p.games++; p.hits += g.hits; p.score += g.score; p.best = Math.max(p.best, g.score); p.last = Math.max(p.last, g.t);
@@ -177,19 +173,18 @@ function render(){
   $("pRows").innerHTML = rows.length ? rows.map(p =>
     '<tr><td class="l">' + esc(p.nick) + '</td><td>' + p.games + '</td><td>' + p.shots + '</td><td>' + p.hits + '</td>' +
     '<td class="miss">' + p.misses + '</td><td class="acc">' + pct(p.hitsS, p.shots) + '</td><td>' + p.best + '</td><td>' + p.score + '</td>' +
-    '<td>' + (p.rating ?? "—") + '</td><td class="l">' + (p.last ? fmtDate(p.last) : "—") + '</td></tr>').join("")
-    : '<tr><td colspan="10" class="empty">მოთამაშე ჯერ არ არის</td></tr>';
+    '<td class="l">' + (p.last ? fmtDate(p.last) : "—") + '</td></tr>').join("")
+    : '<tr><td colspan="9" class="empty">მოთამაშე ჯერ არ არის</td></tr>';
 
   $("delSel").innerHTML = espPlayers.length ? espPlayers.map(n => '<option>' + esc(n) + '</option>').join("") : '<option value="">—</option>';
 
   // თამაშები
   const n = v => v == null ? "—" : v;
   $("gRows").innerHTML = games.length ? games.map(g =>
-    '<tr><td class="l">' + fmtDate(g.t) + '</td><td class="l">' + esc(g.nick) + (g.opp ? ' <span class="tag">vs ' + esc(g.opp) + '</span>' : '') + '</td>' +
+    '<tr><td class="l">' + fmtDate(g.t) + '</td><td class="l">' + esc(g.nick) + '</td>' +
     '<td>' + n(g.small) + '</td><td>' + n(g.medium) + '</td><td>' + n(g.large) + '</td><td>' + g.hits + '</td><td>' + n(g.shots) + '</td>' +
-    '<td class="miss">' + (g.shots != null ? g.shots - g.hits : "—") + '</td><td class="acc">' + (g.shots != null ? pct(g.hits, g.shots) : "—") + '</td><td>' + g.score + '</td>' +
-    '<td class="l">' + (g.src === "old" ? '<span class="tag old">ძველი</span>' : '<span class="tag">დაფა</span>') + '</td></tr>').join("")
-    : '<tr><td colspan="11" class="empty">თამაში ჯერ არ არის</td></tr>';
+    '<td class="miss">' + (g.shots != null ? g.shots - g.hits : "—") + '</td><td class="acc">' + (g.shots != null ? pct(g.hits, g.shots) : "—") + '</td><td>' + g.score + '</td></tr>').join("")
+    : '<tr><td colspan="10" class="empty">თამაში ჯერ არ არის</td></tr>';
 }
 
 document.querySelectorAll("th[data-k]").forEach(th => th.onclick = () => {
@@ -216,10 +211,15 @@ $("delBtn").onclick = () => {
   const n = $("delSel").value;
   if (n && confirm(n + " წაიშალოს მოთამაშეების სიიდან? (მისი თამაშები ისტორიაში დარჩება)")) send("delplayer:" + n);
 };
+$("wipeBtn").onclick = () => {
+  if (!confirm("ყველა თამაში და მოთამაშე სამუდამოდ წაიშლება. გავაგრძელო?")) return;
+  if (prompt("დასადასტურებლად ჩაწერე: წაშლა") !== "წაშლა") return;
+  send("wipe");
+};
 $("csvBtn").onclick = () => {
-  const head = ["date","player","small","medium","large","hits","shots","misses","score","source"];
+  const head = ["date","player","small","medium","large","hits","shots","misses","score"];
   const lines = allGames().map(g => [g.t ? new Date(g.t).toISOString() : "", g.nick, g.small ?? "", g.medium ?? "", g.large ?? "", g.hits, g.shots ?? "",
-    g.shots != null ? g.shots - g.hits : "", g.score, g.src === "old" ? "old" : "board"].map(v => '"' + String(v).replace(/"/g, '""') + '"').join(","));
+    g.shots != null ? g.shots - g.hits : "", g.score].map(v => '"' + String(v).replace(/"/g, '""') + '"').join(","));
   const blob = new Blob(["﻿" + [head.join(","), ...lines].join("\n")], {type:"text/csv"});
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "games.csv"; a.click();
 };

@@ -115,8 +115,6 @@
 const MQTT_BASE = "holecounter/80g10v5p";
 const MQTT_URL  = "wss://broker.hivemq.com:8884/mqtt";
 // ===================================================================
-// ძველი სისტემის (Third Zone, 192.168.0.147) მოთამაშეები — სიაში რომ გამოჩნდნენ
-const OLD_PLAYERS = ["WildYak_801","SwiftYak_325","EagerWolf_163","SilentFox_353","CoolBison_586","BoldBison_157","SwiftPanda_160","RapidLynx_837","RapidYak_573","WildCrane_667"];
 
 const $ = id => document.getElementById(id);
 const LOCAL = location.protocol.startsWith("http") && !location.hostname.endsWith("github.io");
@@ -134,8 +132,8 @@ async function send(cmd){
 }
 
 function drawPlayers(){
-  const all = [...espPlayers, ...OLD_PLAYERS.filter(p => !espPlayers.includes(p))];
-  $("players").innerHTML = all.map(p => '<button class="pbtn" data-p="'+esc(p)+'">'+esc(p)+'</button>').join("");
+  if (!espPlayers.length) { $("players").innerHTML = '<div style="color:var(--mut);font-size:14px">ჯერ მოთამაშე არ არის. ჩაწერე სახელი და დააჭირე „დაწყება“.</div>'; return; }
+  $("players").innerHTML = espPlayers.map(p => '<button class="pbtn" data-p="'+esc(p)+'">'+esc(p)+'</button>').join("");
 }
 $("players").onclick = e => { const b = e.target.closest(".pbtn"); if (b) start(b.dataset.p); };
 $("newBtn").onclick = () => { const n = $("newName").value.trim(); if (n) start(n); else $("newName").focus(); };
