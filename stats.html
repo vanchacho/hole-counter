@@ -204,6 +204,26 @@ function decode(q){
     out.push({n:out.length+1,tier,result:hit?"HIT":"MISS",pts:hit?(TIER_PTS[tier]||0):0,iv:parseInt(q.substr(i+1,2),36)/10}); }
   return out;
 }
+// დარტყმები ბოლოს ჯამად ჩაიწერა ("tot":1) -> აცილებების თანმიმდევრობის მიახლოებითი აღდგენა:
+// აცილებები ნაწილდება გატანებს შორის პაუზებზე (რაც გრძელია პაუზა, მით მეტი აცილება იყო შუაში);
+// აცილების ხვრელი: თუ მოთამაშე რთულ ხვრელზე გადავიდა — ახალი ხვრელი (ჯერ ააცილა, მერე გაიტანა);
+// თუ ადვილზე დაბრუნდა ან იმავეზე დარჩა — წინა ხვრელი (იქ ააცილა და ამიტომ დაბრუნდა).
+function reconstruct(hits,shots){
+  const M=Math.max(0,shots-hits.length);
+  if(!M) return hits;
+  if(!hits.length) return [];                               // არცერთი გატანა -> ხვრელი უცნობია
+  const gaps=hits.map(h=>Math.max(0.5,h.iv)), avg=gaps.reduce((a,b)=>a+b,0)/gaps.length;
+  const w=[...gaps,avg];                                    // ბოლო ელემენტი = ბოლო გატანის შემდეგ
+  const sum=w.reduce((a,b)=>a+b,0), raw=w.map(x=>M*x/sum), k=raw.map(Math.floor);
+  let left=M-k.reduce((a,b)=>a+b,0);
+  raw.map((x,i)=>[x-k[i],i]).sort((a,b)=>b[0]-a[0]).slice(0,left).forEach(([,i])=>k[i]++);
+  const out=[], miss=(tier,iv)=>out.push({tier,result:"MISS",pts:0,iv,est:true});
+  // აცილების ხვრელი: რთულზე გადავიდა -> ახალი (შემდეგი) ხვრელი; ადვილზე დაბრუნდა ან იმავეზეა -> წინა ხვრელი
+  hits.forEach((h,i)=>{ const iv=h.iv/(k[i]+1), pv=i?hits[i-1].tier:h.tier, mt=h.tier>pv?h.tier:pv;
+    for(let j=0;j<k[i];j++) miss(mt,iv); out.push({...h,iv}); });
+  for(let j=0;j<k[hits.length];j++) miss(hits[hits.length-1].tier,avg);
+  return out.map((x,i)=>({...x,n:i+1}));
+}
 const DAY_MS=86400000, TZ_MS=4*3600000;   // საქართველო UTC+4
 const dayNum = t => Math.floor((t+TZ_MS)/DAY_MS);
 const fmtDay = t => new Date(t).toLocaleDateString("ka-GE",{year:"numeric",month:"2-digit",day:"2-digit"});
@@ -220,10 +240,10 @@ function build(hist){
     gid++;
     const t=(g.end||g.start)*1000, day=dayNum(t), ab=!!g.ab;
     const ses=g.p.map((p,i)=>{ const pl=P(p.n); if(pl.since==null) pl.since=t;
-      const th=decode(p.q);
+      const th=g.tot?reconstruct(decode(p.q),p.t):decode(p.q);
       const s={id:++sid,gid,nick:p.n,t,day,visit:ab?null:pl.visits+1,P:p.s,hits:p.h,throws:p.t,abandoned:ab,
         opp:g.p.length===2?g.p[1-i].n:"",won:"",rBefore:+pl.rating.toFixed(1),rAfter:+pl.rating.toFixed(1),gain:0,rd:Math.round(pl.rd),
-        improved:false,best:pl.best,c20:classify(th,20),c50:classify(th,GAME_THROWS),th};
+        improved:false,best:pl.best,c20:classify(th,20),c50:classify(th,GAME_THROWS),est:!!g.tot,th};
       th.forEach(x=>throws.push({sid:s.id,nick:p.n,...x}));
       return s; });
     if(ses.length===2){ const [a,b]=ses; a.won=a.P>b.P?"yes":(a.P<b.P?"no":"tie"); b.won=b.P>a.P?"yes":(b.P<a.P?"no":"tie"); }
@@ -252,7 +272,7 @@ function build(hist){
 // ---------- ახსნები (მოკლე + „More“) ----------
 const HELP={
  types:["რამდენ მოთამაშეს რომელი ხასიათის ტიპი აქვს.",
-  "<b>Type / Name</b>: P4…M4, ჯერ პლიუსები, მერე მინუსები. <b>P (პლიუსი)</b> უყვარს მოგება და ადვილ ხვრელებს ირჩევს. <b>M (მინუსი)</b> უყვარს რისკი და პატარა ხვრელებს ესვრის. <b>Wants to win</b>: მოგების რა პროცენტი სჭირდება ამ ტიპს კმაყოფილებისთვის. <b>Behaviour</b>: როგორ ირჩევს ხვრელს და როგორ რეაგირებს აცილებაზე. <b>Expected</b>: დაგეგმილი წილი. <b>Players / Share</b>: რა გამოვიდა ნამდვილ თამაშებში.<br>ტიპი მხოლოდ სროლებით დგინდება: რომელ ხვრელს ესროდა, გაიტანა თუ ააცილა, რამდენ ხანს ფიქრობდა. მინიმუმ 10 სროლაა საჭირო, ნაკლების შემთხვევაში „?“ წერია. მოთამაშის ტიპი = მისი ყველაზე ხშირი Type @50. <b>B</b> თამაშის განწყობაა და არა ხასიათი."],
+  "<b>Type / Name</b>: P4…M4, ჯერ პლიუსები, მერე მინუსები. <b>P (პლიუსი)</b> უყვარს მოგება და ადვილ ხვრელებს ირჩევს. <b>M (მინუსი)</b> უყვარს რისკი და პატარა ხვრელებს ესვრის. <b>Wants to win</b>: მოგების რა პროცენტი სჭირდება ამ ტიპს კმაყოფილებისთვის. <b>Behaviour</b>: როგორ ირჩევს ხვრელს და როგორ რეაგირებს აცილებაზე. <b>Expected</b>: დაგეგმილი წილი. <b>Players / Share</b>: რა გამოვიდა ნამდვილ თამაშებში.<br>ტიპი მხოლოდ სროლებით დგინდება: რომელ ხვრელს ესროდა, გაიტანა თუ ააცილა, რამდენ ხანს ფიქრობდა. მინიმუმ 10 სროლაა საჭირო, ნაკლების შემთხვევაში „?“ წერია. მოთამაშის ტიპი = მისი ყველაზე ხშირი Type @50. <b>B</b> თამაშის განწყობაა და არა ხასიათი.<br><b>≈ მიახლოებითი</b>: მოთამაშე ბოლოს მხოლოდ დარტყმების ჯამს წერს, ამიტომ აცილებების ადგილი და ხვრელი აღდგენილია. აცილებები ნაწილდება გატანებს შორის პაუზებზე (რაც გრძელია პაუზა, მით მეტი აცილება იყო შუაში), ხვრელად ითვლება შემდეგი გატანის ხვრელი. ამის შემდეგ ტიპს იგივე წესები ადგენს. თუ მოთამაშემ ვერცერთი გაიტანა, ტიპი „?“ რჩება."],
  week:["თამაშები კვირების მიხედვით: პირველად მოსულები და დაბრუნებულები.",
   "კვირა 1 = პირველი თამაშის დღიდან 7 დღე, კვირა 2 = შემდეგი 7 და ა.შ. <b>First-time</b> მოთამაშის პირველი ვიზიტია, <b>Returning</b> მე-2 ან შემდეგი. Return % სეზონის განმავლობაში ჩვეულებრივ იზრდება."],
  lb10:["10 მოთამაშე ყველაზე მაღალი რეიტინგით (მხოლოდ 1-vs-1 თამაშები).",
@@ -285,6 +305,7 @@ function typeRows(cnt,total){ const rows=TYPE_ORDER.filter(t=>t!=="B"||cnt.B).ma
   if(cnt["?"]) rows.push(`<tr><td><b>?</b></td><td>Unknown</td><td>–</td><td class="wrap">ჯერ ცოტა სროლაა (10-ზე ნაკლები)</td><td>–</td><td>${cnt["?"]}</td><td><span class="bar" style="width:${Math.round(160*cnt["?"]/Math.max(1,total))}px;background:var(--mut)"></span> ${(100*cnt["?"]/Math.max(1,total)).toFixed(1)}%</td></tr>`);
   return rows.join(""); }
 function bars(obj,total){ return Object.entries(obj).map(([k,c])=>`<tr><td>${k}</td><td>${c}</td><td><span class="bar" style="width:${Math.round(220*c/Math.max(1,total))}px"></span> ${(100*c/Math.max(1,total)).toFixed(1)}%</td></tr>`).join(""); }
+function tl(x,k){ return x[k]+(x.est&&x[k]!=="?"?"≈":""); }
 function esc(s){ return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
 function render(){
@@ -353,7 +374,7 @@ function render(){
   const sel=window.EX_NICK && players.some(p=>p.nick===window.EX_NICK) ? window.EX_NICK : ([...players].sort((a,b)=>b.hist.length-a.hist.length)[0]||{}).nick;
   window.EX_NICK=sel;
   const sp=players.find(p=>p.nick===sel);
-  if(sp){ html+=`<div class="panel"><div class="pt">Player — <select id="exSel">${[...players].sort((a,b)=>a.nick.localeCompare(b.nick)).map(p=>`<option${p.nick===sel?" selected":""}>${esc(p.nick)}</option>`).join("")}</select> · type <span title="${esc(tt(sp.type))}">${sp.type}</span> (${(TYPE_INFO[sp.type]||{}).name||"unknown"}) · ${sp.visits} visits · rating ${showR(sp.rating,sp.rd)} ±${Math.round(sp.rd)} · top score ${sp.best}</div>${helpBox("example")}<div class="scroll"><table><tr><th>Visit</th><th>Day</th><th>P</th><th>Opponent</th><th>Result</th><th>Rating</th><th>Change</th><th>Top score</th><th>New top</th><th>Type @20</th><th>Type @50</th></tr>${sp.hist.map(h=>`<tr><td>${h.abandoned?'<span class="tag">unfinished</span>':h.visit}</td><td>${fmtDay(h.t)}</td><td>${h.P}</td><td>${h.opp?esc(h.opp):"solo"}</td><td class="${h.won==="yes"?"ok":(h.won==="no"?"warn":"")}">${h.opp?({yes:"win",no:"loss",tie:"draw"})[h.won]:"–"}</td><td>${showR(h.rAfter,h.rd)}</td><td class="${h.gain>0?"ok":(h.gain<0?"warn":"")}">${h.opp&&!h.abandoned?(h.gain>0?"+":"")+Math.round(h.gain):"–"}</td><td>${h.best}</td><td class="${h.improved?"ok":""}">${h.improved?"yes":"–"}</td><td title="${esc(tt(h.c20))}">${h.c20}</td><td title="${esc(tt(h.c50))}">${h.c50}</td></tr>`).join("")}</table></div></div>`; }
+  if(sp){ html+=`<div class="panel"><div class="pt">Player — <select id="exSel">${[...players].sort((a,b)=>a.nick.localeCompare(b.nick)).map(p=>`<option${p.nick===sel?" selected":""}>${esc(p.nick)}</option>`).join("")}</select> · type <span title="${esc(tt(sp.type))}">${sp.type}</span> (${(TYPE_INFO[sp.type]||{}).name||"unknown"}) · ${sp.visits} visits · rating ${showR(sp.rating,sp.rd)} ±${Math.round(sp.rd)} · top score ${sp.best}</div>${helpBox("example")}<div class="scroll"><table><tr><th>Visit</th><th>Day</th><th>P</th><th>Opponent</th><th>Result</th><th>Rating</th><th>Change</th><th>Top score</th><th>New top</th><th>Type @20</th><th>Type @50</th></tr>${sp.hist.map(h=>`<tr><td>${h.abandoned?'<span class="tag">unfinished</span>':h.visit}</td><td>${fmtDay(h.t)}</td><td>${h.P}</td><td>${h.opp?esc(h.opp):"solo"}</td><td class="${h.won==="yes"?"ok":(h.won==="no"?"warn":"")}">${h.opp?({yes:"win",no:"loss",tie:"draw"})[h.won]:"–"}</td><td>${showR(h.rAfter,h.rd)}</td><td class="${h.gain>0?"ok":(h.gain<0?"warn":"")}">${h.opp&&!h.abandoned?(h.gain>0?"+":"")+Math.round(h.gain):"–"}</td><td>${h.best}</td><td class="${h.improved?"ok":""}">${h.improved?"yes":"–"}</td><td title="${esc(tt(h.c20))}">${tl(h,"c20")}</td><td title="${esc(tt(h.c50))}">${tl(h,"c50")}</td></tr>`).join("")}</table></div></div>`; }
   $("out").innerHTML=typesHtml+html+resultsHtml;   // personality types first, summary cards last
   if($("exSel")) $("exSel").onchange=e=>{ window.EX_NICK=e.target.value; render(); };
   ["rating","top"].forEach(k=>{ const d=$(k==="rating"?"lbAll":"tsAll"); if(d&&d.open) lbFill(k); });
@@ -362,7 +383,7 @@ function render(){
 
 function renderGames(){
   const s=[...DATA.sessions].reverse();
-  $("gRows").innerHTML = s.length ? s.map(x=>`<tr><td>${fmtTs(x.t)}</td><td>${esc(x.nick)}</td><td>${x.opp?esc(x.opp):"solo"}</td><td class="${x.won==="yes"?"ok":(x.won==="no"?"warn":"")}">${x.opp?({yes:"win",no:"loss",tie:"draw"})[x.won]:"–"}</td><td>${x.throws}</td><td>${x.hits}</td><td class="warn">${x.throws-x.hits}</td><td class="ok">${x.throws?Math.round(100*x.hits/x.throws)+"%":"—"}</td><td><b>${x.P}</b></td><td title="${esc(tt(x.c20))}">${x.c20}</td><td title="${esc(tt(x.c50))}">${x.c50}</td><td>${x.abandoned?'<span class="tag">unfinished</span>':""}</td></tr>`).join("")
+  $("gRows").innerHTML = s.length ? s.map(x=>`<tr><td>${fmtTs(x.t)}</td><td>${esc(x.nick)}</td><td>${x.opp?esc(x.opp):"solo"}</td><td class="${x.won==="yes"?"ok":(x.won==="no"?"warn":"")}">${x.opp?({yes:"win",no:"loss",tie:"draw"})[x.won]:"–"}</td><td>${x.throws}</td><td>${x.hits}</td><td class="warn">${x.throws-x.hits}</td><td class="ok">${x.throws?Math.round(100*x.hits/x.throws)+"%":"—"}</td><td><b>${x.P}</b></td><td title="${esc(tt(x.c20))}">${tl(x,"c20")}</td><td title="${esc(tt(x.c50))}">${tl(x,"c50")}</td><td>${x.abandoned?'<span class="tag">unfinished</span>':""}</td></tr>`).join("")
     : '<tr><td colspan="12" class="empty">თამაში ჯერ არ არის</td></tr>';
   $("delSel").innerHTML = espPlayers.length ? espPlayers.map(n=>'<option>'+esc(n)+'</option>').join("") : '<option value="">—</option>';
 }
@@ -371,8 +392,8 @@ function renderGames(){
 function csv(rows){ if(!rows.length)return""; const k=Object.keys(rows[0]); return k.join(",")+"\n"+rows.map(r=>k.map(x=>String(r[x]??"").replace(/,/g,";")).join(",")).join("\n"); }
 function dl(name,text){ const b=new Blob(["﻿"+text],{type:"text/csv"}); const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=name; a.click(); }
 $("dlP").onclick=()=>dl("players.csv",csv(DATA.players.map((p,i)=>({id:i+1,nick:p.nick,type:p.type,visits:p.visits,rating:p.rating.toFixed(1),rd:p.rd.toFixed(0),games:p.games,wins:p.w,losses:p.l,draws:p.dr,top_score:p.best,new_top_scores:p.k,created:p.since?isoLocal(p.since).slice(0,10):"",source:"real"}))));
-$("dlS").onclick=()=>dl("sessions.csv",csv(DATA.sessions.map(s=>({sid:s.gid,day:isoLocal(s.t).slice(0,10),ts:isoLocal(s.t),nick:s.nick,visit:s.visit??0,throws:s.throws,hits:s.hits,P:s.P,r_before:s.rBefore,r_after:s.rAfter,gain:s.gain,improved:s.improved?1:0,best:s.best,opp:s.opp,won:s.won,abandoned:s.abandoned?1:0,type20:s.c20,type50:s.c50,source:"real"}))));
-$("dlT").onclick=()=>dl("throws.csv",csv(DATA.throws.map((t,i)=>({id:i+1,sid:t.sid,nick:t.nick,n:t.n,gap_ms:Math.round(t.iv*1000),tier:t.tier,hole:TIER_NAME[t.tier],pts:t.pts,hit:t.result==="HIT"?1:0,source:"real"}))));
+$("dlS").onclick=()=>dl("sessions.csv",csv(DATA.sessions.map(s=>({sid:s.gid,day:isoLocal(s.t).slice(0,10),ts:isoLocal(s.t),nick:s.nick,visit:s.visit??0,throws:s.throws,hits:s.hits,P:s.P,r_before:s.rBefore,r_after:s.rAfter,gain:s.gain,improved:s.improved?1:0,best:s.best,opp:s.opp,won:s.won,abandoned:s.abandoned?1:0,type20:s.c20,type50:s.c50,estimated:s.est?1:0,source:"real"}))));
+$("dlT").onclick=()=>dl("throws.csv",csv(DATA.throws.map((t,i)=>({id:i+1,sid:t.sid,nick:t.nick,n:t.n,gap_ms:Math.round(t.iv*1000),tier:t.tier,hole:TIER_NAME[t.tier],pts:t.pts,hit:t.result==="HIT"?1:0,estimated:t.est?1:0,source:"real"}))));
 
 // ---------- ცოცხალი მდგომარეობა + ადმინი ----------
 const LOCAL = location.protocol.startsWith("http") && !location.hostname.endsWith("github.io");
