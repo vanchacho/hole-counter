@@ -91,8 +91,8 @@
       <button class="sm g" id="dlP">⬇ players.csv</button><button class="sm g" id="dlS">⬇ sessions.csv</button><button class="sm g" id="dlT">⬇ throws.csv</button>
     </div>
     <div class="scroll" style="max-height:520px;overflow:auto"><table>
-      <thead><tr><th>თარიღი</th><th>მოთამაშე</th><th>მეტოქე</th><th>შედეგი</th><th>სროლა</th><th>გატანა</th><th>აცილება</th><th>სიზუსტე</th><th>P</th><th>Type @20</th><th>Type @50</th><th></th></tr></thead>
-      <tbody id="gRows"><tr><td colspan="12" class="empty">იტვირთება…</td></tr></tbody>
+      <thead><tr><th>თარიღი</th><th>ვიზიტი</th><th>მოთამაშე</th><th>მეტოქე</th><th>შედეგი</th><th>სროლა</th><th>გატანა</th><th>აცილება</th><th>სიზუსტე</th><th>P</th><th>Type @20</th><th>Type @30</th><th></th></tr></thead>
+      <tbody id="gRows"><tr><td colspan="13" class="empty">იტვირთება…</td></tr></tbody>
     </table></div>
   </div>
 
@@ -130,7 +130,9 @@ $("logout").onclick = () => { try { sessionStorage.removeItem("hc_auth"); } catc
 // =====================================================================
 const TIER_NAME = {0:"დიდი", 1:"საშუალო", 2:"MidSmall", 3:"პატარა"};
 const TIER_PTS  = {0:10, 1:20, 3:30};
-const GAME_THROWS = 50;
+const GAME_THROWS = 30;
+// ვიზიტი (სესია): მოთამაშის თამაშები, რომელთა შორისაც 60 წუთზე ნაკლები გავიდა = ერთი მოსვლა
+const SESSION_GAP_MS = 60*60000;
 
 // player types: name, win % they need to feel satisfied, behaviour, expected share
 const TYPE_INFO={
@@ -155,6 +157,14 @@ function glG(rd){ return 1/Math.sqrt(1+3*GL_Q*GL_Q*rd*rd/(Math.PI*Math.PI)); }
 function glRdNow(pl,day){ return pl.last==null?pl.rd:Math.min(GL_RD0,Math.sqrt(pl.rd*pl.rd+GL_C*GL_C*Math.max(0,day-pl.last))); }
 function glicko(r,rd,ro,rdo,sc){ const g=glG(rdo), e=1/(1+Math.pow(10,-g*(r-ro)/400)), d2=1/(GL_Q*GL_Q*g*g*e*(1-e)), den=1/(rd*rd)+1/d2;
   return [r+GL_Q/den*g*(sc-e), Math.max(GL_RDMIN,Math.sqrt(1/den))]; }
+// იგივე Glicko-1, რამდენიმე მეტოქით ერთ პერიოდში (Glickman 1999: Σ ყველა მეტოქეზე)
+function glickoMulti(r,rd,opps){ let d=0,sum=0;
+  for(const o of opps){ const g=glG(o.rd), e=1/(1+Math.pow(10,-g*(r-o.r)/400)); d+=g*g*e*(1-e); sum+=g*(o.s-e); }
+  const d2=1/(GL_Q*GL_Q*d), den=1/(rd*rd)+1/d2;
+  return [r+GL_Q/den*sum, Math.max(GL_RDMIN,Math.sqrt(1/den))]; }
+// შედეგის ტექსტი: 2 მოთამაშე = win / loss / draw, 3–4 = ადგილი
+function resTxt(x){ return !x.opp?"–":(x.nP===2?({yes:"win",no:"loss",tie:"draw"})[x.won]:x.place+" / "+x.nP); }
+function resCls(x){ return !x.opp?"":(x.place===1?"ok":(x.place===x.nP?"warn":"")); }
 function showR(r,rd){ return Math.round(r)+(rd>GL_PROV?"?":""); }
 
 // ---------- classifier (rule-based, Mika's indicators) ----------
@@ -242,25 +252,31 @@ function build(hist){
     const ses=g.p.map((p,i)=>{ const pl=P(p.n); if(pl.since==null) pl.since=t;
       const th=g.tot?reconstruct(decode(p.q),p.t):decode(p.q);
       const s={id:++sid,gid,nick:p.n,t,day,visit:ab?null:pl.visits+1,P:p.s,hits:p.h,throws:p.t,abandoned:ab,
-        opp:g.p.length===2?g.p[1-i].n:"",won:"",rBefore:+pl.rating.toFixed(1),rAfter:+pl.rating.toFixed(1),gain:0,rd:Math.round(pl.rd),
+        opp:g.p.filter((_,j)=>j!==i).map(o=>o.n).join(", "),nP:g.p.length,place:1+g.p.filter(o=>o.s>p.s).length,won:"",rBefore:+pl.rating.toFixed(1),rAfter:+pl.rating.toFixed(1),gain:0,rd:Math.round(pl.rd),
         improved:false,best:pl.best,c20:classify(th,20),c50:classify(th,GAME_THROWS),est:!!g.tot,th};
       th.forEach(x=>throws.push({sid:s.id,nick:p.n,...x}));
       return s; });
     if(ses.length===2){ const [a,b]=ses; a.won=a.P>b.P?"yes":(a.P<b.P?"no":"tie"); b.won=b.P>a.P?"yes":(b.P<a.P?"no":"tie"); }
     // top score: მხოლოდ დასრულებული (50 სროლა) თამაშები
     if(!ab) ses.forEach(s=>{ const pl=players[s.nick]; s.improved=updateTop(pl,s.P); s.best=pl.best; });
-    // rating: მხოლოდ დასრულებული 1-vs-1 თამაშები ცვლის
-    if(!ab&&ses.length===2){
-      const [sa,sb]=ses, pa=players[sa.nick], pb=players[sb.nick];
-      const rda=glRdNow(pa,day), rdb=glRdNow(pb,day), sc=sa.won==="yes"?1:(sa.won==="no"?0:0.5);
-      const na=glicko(pa.rating,rda,pb.rating,rdb,sc), nb=glicko(pb.rating,rdb,pa.rating,rda,1-sc);
-      [[sa,pa,na],[sb,pb,nb]].forEach(([se,pl,n])=>{ se.rBefore=+pl.rating.toFixed(1); pl.rating=n[0]; pl.rd=n[1]; pl.last=day; pl.games++;
-        if(se.won==="yes")pl.w++; else if(se.won==="no")pl.l++; else pl.dr++;
+    // rating: მხოლოდ დასრულებული თამაშები 2+ მოთამაშით ცვლის.
+    // 3–4 მოთამაშე = თითო მეტოქესთან ცალკე 1-vs-1 შედეგი, ყველა ერთად ერთ Glicko პერიოდში (2-ზე = ზუსტად ძველი ფორმულა)
+    if(!ab&&ses.length>=2){
+      const pre=ses.map(s=>{ const pl=players[s.nick]; return {r:pl.rating,rd:glRdNow(pl,day)}; });
+      const upd=ses.map((s,i)=>glickoMulti(pre[i].r,pre[i].rd,ses.map((o,j)=>j===i?null:{r:pre[j].r,rd:pre[j].rd,s:s.P>o.P?1:(s.P<o.P?0:0.5)}).filter(Boolean)));
+      ses.forEach((se,i)=>{ const pl=players[se.nick]; se.rBefore=+pl.rating.toFixed(1); pl.rating=upd[i][0]; pl.rd=upd[i][1]; pl.last=day;
+        ses.forEach((o,j)=>{ if(j===i) return; pl.games++; if(se.P>o.P)pl.w++; else if(se.P<o.P)pl.l++; else pl.dr++; });
         se.rAfter=+pl.rating.toFixed(1); se.gain=+(se.rAfter-se.rBefore).toFixed(1); se.rd=Math.round(pl.rd); });
     }
     ses.forEach(s=>{ sessions.push(s); players[s.nick].hist.push(s); });
   }
-  // მოთამაშის ტიპი: ყველაზე ხშირი Type @50 მის თამაშებში (B = განწყობა, არა ხასიათი)
+  // ვიზიტები: ახალი ვიზიტი იწყება, თუ წინა თამაშიდან 60 წუთზე მეტი გავიდა
+  for(const pl of Object.values(players)){
+    let v=0, last=-Infinity, gi=0;
+    for(const x of pl.hist){ if(x.t-last>SESSION_GAP_MS){ v++; gi=0; } gi++; x.visit=v; x.gameNo=gi; last=x.t; }
+    pl.vis=v;
+  }
+  // მოთამაშის ტიპი: ყველაზე ხშირი Type @30 მის თამაშებში (B = განწყობა, არა ხასიათი)
   for(const pl of Object.values(players)){
     const cnt={}; pl.hist.filter(s=>s.c50!=="?").forEach(s=>cnt[s.c50]=(cnt[s.c50]||0)+1);
     const real=Object.entries(cnt).filter(([k])=>k!=="B").sort((a,b)=>b[1]-a[1]);
@@ -272,13 +288,13 @@ function build(hist){
 // ---------- ახსნები (მოკლე + „More“) ----------
 const HELP={
  types:["რამდენ მოთამაშეს რომელი ხასიათის ტიპი აქვს.",
-  "<b>Type / Name</b>: P4…M4, ჯერ პლიუსები, მერე მინუსები. <b>P (პლიუსი)</b> უყვარს მოგება და ადვილ ხვრელებს ირჩევს. <b>M (მინუსი)</b> უყვარს რისკი და პატარა ხვრელებს ესვრის. <b>Wants to win</b>: მოგების რა პროცენტი სჭირდება ამ ტიპს კმაყოფილებისთვის. <b>Behaviour</b>: როგორ ირჩევს ხვრელს და როგორ რეაგირებს აცილებაზე. <b>Expected</b>: დაგეგმილი წილი. <b>Players / Share</b>: რა გამოვიდა ნამდვილ თამაშებში.<br>ტიპი მხოლოდ სროლებით დგინდება: რომელ ხვრელს ესროდა, გაიტანა თუ ააცილა, რამდენ ხანს ფიქრობდა. მინიმუმ 10 სროლაა საჭირო, ნაკლების შემთხვევაში „?“ წერია. მოთამაშის ტიპი = მისი ყველაზე ხშირი Type @50. <b>B</b> თამაშის განწყობაა და არა ხასიათი.<br><b>≈ მიახლოებითი</b>: მოთამაშე ბოლოს მხოლოდ დარტყმების ჯამს წერს, ამიტომ აცილებების ადგილი და ხვრელი აღდგენილია. აცილებები ნაწილდება გატანებს შორის პაუზებზე (რაც გრძელია პაუზა, მით მეტი აცილება იყო შუაში), ხვრელად ითვლება შემდეგი გატანის ხვრელი. ამის შემდეგ ტიპს იგივე წესები ადგენს. თუ მოთამაშემ ვერცერთი გაიტანა, ტიპი „?“ რჩება."],
+  "<b>Type / Name</b>: P4…M4, ჯერ პლიუსები, მერე მინუსები. <b>P (პლიუსი)</b> უყვარს მოგება და ადვილ ხვრელებს ირჩევს. <b>M (მინუსი)</b> უყვარს რისკი და პატარა ხვრელებს ესვრის. <b>Wants to win</b>: მოგების რა პროცენტი სჭირდება ამ ტიპს კმაყოფილებისთვის. <b>Behaviour</b>: როგორ ირჩევს ხვრელს და როგორ რეაგირებს აცილებაზე. <b>Expected</b>: დაგეგმილი წილი. <b>Players / Share</b>: რა გამოვიდა ნამდვილ თამაშებში.<br>ტიპი მხოლოდ სროლებით დგინდება: რომელ ხვრელს ესროდა, გაიტანა თუ ააცილა, რამდენ ხანს ფიქრობდა. მინიმუმ 10 სროლაა საჭირო, ნაკლების შემთხვევაში „?“ წერია. მოთამაშის ტიპი = მისი ყველაზე ხშირი Type @30 (თამაში 30 დარტყმაა). <b>B</b> თამაშის განწყობაა და არა ხასიათი.<br><b>≈ მიახლოებითი</b>: მოთამაშე ბოლოს მხოლოდ დარტყმების ჯამს წერს, ამიტომ აცილებების ადგილი და ხვრელი აღდგენილია. აცილებები ნაწილდება გატანებს შორის პაუზებზე (რაც გრძელია პაუზა, მით მეტი აცილება იყო შუაში), ხვრელად ითვლება შემდეგი გატანის ხვრელი. ამის შემდეგ ტიპს იგივე წესები ადგენს. თუ მოთამაშემ ვერცერთი გაიტანა, ტიპი „?“ რჩება."],
  week:["თამაშები კვირების მიხედვით: პირველად მოსულები და დაბრუნებულები.",
-  "კვირა 1 = პირველი თამაშის დღიდან 7 დღე, კვირა 2 = შემდეგი 7 და ა.შ. <b>First-time</b> მოთამაშის პირველი ვიზიტია, <b>Returning</b> მე-2 ან შემდეგი. Return % სეზონის განმავლობაში ჩვეულებრივ იზრდება."],
+  "ითვლება ვიზიტები (მოსვლები) და არა ცალკეული თამაშები. <b>ვიზიტი</b> = მოთამაშის თამაშები ზედიზედ, თუ მათ შორის 60 წუთზე ნაკლები გავიდა. მოვიდნენ, ითამაშეს და გააგრძელეს = ერთი ვიზიტი; სხვა დროს მოვიდნენ = ახალი ვიზიტი. კვირა 1 = პირველი თამაშის დღიდან 7 დღე, კვირა 2 = შემდეგი 7 და ა.შ. <b>First-time</b> მოთამაშის პირველი ვიზიტია, <b>Returning</b> მე-2 ან შემდეგი. Return % სეზონის განმავლობაში ჩვეულებრივ იზრდება."],
  lb10:["10 მოთამაშე ყველაზე მაღალი რეიტინგით (მხოლოდ 1-vs-1 თამაშები).",
-  "<b>Rating</b>: Glicko სისტემა, იგივე რაც chess.com-ზე. ყველა 1200-დან იწყებს. 1-vs-1 თამაშის მოგებისას რეიტინგი იზრდება, წაგებისას კლებულობს, ფრეს (თანაბარი ქულა) მცირე ცვლილება მოსდევს. ძლიერის მოგება მეტს გაძლევს, სუსტთან წაგება მეტს გართმევს.<br><b>RD</b> აჩვენებს, რამდენად დარწმუნებულია სისტემა (±). ახალ მოთამაშეს ±350 აქვს, ბევრი თამაშის შემდეგ RD მცირდება. თუ დიდხანს არ თამაშობს, RD ნელ-ნელა ისევ იზრდება. <b>?</b> = ჯერ არ არის საიმედო (RD > 110).<br><b>Games, W / L / D</b>: 1-vs-1 თამაშები, მოგება / წაგება / ფრე. მარტო თამაში და დაუსრულებელი თამაში რეიტინგს არ ცვლის."],
+  "<b>Rating</b>: Glicko სისტემა, იგივე რაც chess.com-ზე. ყველა 1200-დან იწყებს. 1-vs-1 თამაშის მოგებისას რეიტინგი იზრდება, წაგებისას კლებულობს, ფრეს (თანაბარი ქულა) მცირე ცვლილება მოსდევს. ძლიერის მოგება მეტს გაძლევს, სუსტთან წაგება მეტს გართმევს.<br><b>RD</b> აჩვენებს, რამდენად დარწმუნებულია სისტემა (±). ახალ მოთამაშეს ±350 აქვს, ბევრი თამაშის შემდეგ RD მცირდება. თუ დიდხანს არ თამაშობს, RD ნელ-ნელა ისევ იზრდება. <b>?</b> = ჯერ არ არის საიმედო (RD > 110).<br><b>Games, W / L / D</b>: 1-vs-1 შედეგები, მოგება / წაგება / ფრე. 3–4 მოთამაშიან თამაშში თითო მეტოქე ცალკე 1-vs-1 შედეგად ითვლება: 4-იანში პირველი ადგილი = 3 მოგება. მარტო თამაში და დაუსრულებელი თამაში რეიტინგს არ ცვლის."],
  ts10:["10 საუკეთესო ერთი თამაშის ქულა. Top score არასდროს კლებულობს.",
-  "<b>Top score</b>: საუკეთესო ქულა, რაც მოთამაშეს ერთ თამაშში ჰქონია (მაქს. 1500 = 50 სროლა × 30). ითვლება მარტო თამაშიც და 1-vs-1-იც, მაგრამ მხოლოდ დასრულებული (50 სროლა). იზრდება მხოლოდ მაშინ, როცა მოთამაშე მას გადააჭარბებს. <b>Visits</b>: რამდენი დასრულებული თამაში ითამაშა."],
+  "<b>Top score</b>: საუკეთესო ქულა, რაც მოთამაშეს ერთ თამაშში ჰქონია (მაქს. 900 = 30 დარტყმა × 30). ითვლება მარტო თამაშიც და 1-vs-1-იც, მაგრამ მხოლოდ დასრულებული. იზრდება მხოლოდ მაშინ, როცა მოთამაშე მას გადააჭარბებს. <b>Visits</b>: რამდენჯერ მოვიდა (ერთ ვიზიტში შეიძლება რამდენიმე თამაში იყოს). <b>Games</b>: დასრულებული თამაშები."],
  lball:["ორივე ლიდერბორდი ყველა მოთამაშით. გახსენი სია და მოძებნე სახელით.",
   "<b>Rating</b>: ყველა, ვისაც ერთი 1-vs-1 თამაში მაინც უთამაშია. <b>Top score</b>: ყველა, ვინც ითამაშა. Search სახელით ფილტრავს, # ნამდვილ ადგილს აჩვენებს."],
  visits:["რამდენი მოთამაშეა თითო ვიზიტების ჯგუფში.",
@@ -286,18 +302,18 @@ const HELP={
  traj:["როგორ შეიცვალა რეიტინგი ვიზიტიდან ვიზიტამდე 12 მოთამაშეს, რომლებმაც ყველაზე მეტი 1-vs-1 ითამაშეს.",
   "თითო ხაზი ერთი მოთამაშეა. მარცხნიდან მარჯვნივ ვიზიტებია, ქვემოდან ზემოთ რეიტინგი. მოგების შემდეგ ხაზი ადის, წაგების შემდეგ ჩადის, სწორი მონაკვეთი მარტო თამაშია."],
  avgvisit:["საშუალო ქულა და ახალი top score-ის წილი ვიზიტის ნომრის მიხედვით.",
-  "<b>Avg. P</b>: საშუალო ქულა n-ე ვიზიტზე. <b>New top score %</b>: რამდენ შემთხვევაში დაამყარა მოთამაშემ ახალი საკუთარი რეკორდი (პირველ ვიზიტზე „–“)."],
+  "<b>Avg. P</b>: საშუალო ქულა ერთ თამაშში n-ე ვიზიტზე. <b>New top score %</b>: რამდენ შემთხვევაში დაამყარა მოთამაშემ ახალი საკუთარი რეკორდი (პირველ ვიზიტზე „–“)."],
  example:["აირჩიე მოთამაშე და ნახე მისი ყველა ვიზიტი.",
-  "<b>P</b>: ქულა. <b>Opponent / Result</b>: მეტოქე და შედეგი (solo = მარტო). <b>Rating / Change</b>: რეიტინგი თამაშის შემდეგ და ცვლილება. <b>Top score / New top</b>: რეკორდი და დაამყარა თუ არა ახალი. <b>Type @20 / @50</b>: ტიპი 20-ე და 50-ე სროლის შემდეგ."],
+  "<b>P</b>: ქულა. <b>Opponent / Result</b>: მეტოქე და შედეგი (solo = მარტო). <b>Rating / Change</b>: რეიტინგი თამაშის შემდეგ და ცვლილება. <b>Top score / New top</b>: რეკორდი და დაამყარა თუ არა ახალი. <b>Visit · game</b>: მერამდენე ვიზიტია და მერამდენე თამაში ამ ვიზიტში. <b>Type @20 / @30</b>: ტიპი 20-ე და 30-ე დარტყმის შემდეგ."],
  results:["მთავარი ციფრები ყველა თამაშიდან.",
-  "<b>sessions</b> = დასრულებული თამაშები თითო მოთამაშეზე. <b>returned</b> = მოთამაშეები, რომლებმაც 2 ან მეტჯერ ითამაშეს. <b>plus / minus: new top score</b> = რამდენ თამაშში დაამყარეს ახალი რეკორდი P და M ტიპის მოთამაშეებმა (მე-2 ვიზიტიდან)."]};
+  "<b>sessions (visits)</b> = მოსვლები (60 წუთზე მეტი პაუზა = ახალი ვიზიტი). <b>games</b> = დასრულებული თამაშები თითო მოთამაშეზე. <b>returned</b> = მოთამაშეები, რომლებმაც 2 ან მეტჯერ ითამაშეს. <b>plus / minus: new top score</b> = რამდენ თამაშში დაამყარეს ახალი რეკორდი P და M ტიპის მოთამაშეებმა (მე-2 ვიზიტიდან)."]};
 function helpBox(k){ const h=HELP[k]; return h?`<div class="ps">${h[0]}</div><details class="more"><summary>More</summary><div>${h[1]}</div></details>`:""; }
 
 // ---------- გვერდის შედგენა ----------
 let DATA={players:[],sessions:[],throws:[]};
 function lbRow(kind,p,i){ return kind==="rating"
   ? `<tr><td>${i+1}</td><td>${esc(p.nick)}</td><td><b>${showR(p.rating,p.rd)}</b></td><td>±${Math.round(p.rd)}</td><td>${p.games}</td><td>${p.w} / ${p.l} / ${p.dr}</td><td title="${esc(tt(p.type))}">${p.type}</td></tr>`
-  : `<tr><td>${i+1}</td><td>${esc(p.nick)}</td><td><b>${p.best}</b></td><td>${p.visits}</td><td title="${esc(tt(p.type))}">${p.type}</td></tr>`; }
+  : `<tr><td>${i+1}</td><td>${esc(p.nick)}</td><td><b>${p.best}</b></td><td>${p.vis}</td><td>${p.visits}</td><td title="${esc(tt(p.type))}">${p.type}</td></tr>`; }
 function lbFill(kind){ const q=($("lbQ"+kind).value||"").toLowerCase(), b=$("lbBody"+kind); if(!b||!window.LB) return;
   b.innerHTML=window.LB[kind].map((p,i)=>[i,p]).filter(([i,p])=>!q||p.nick.toLowerCase().includes(q)).map(([i,p])=>lbRow(kind,p,i)).join("") || '<tr><td colspan="7" class="empty">—</td></tr>'; }
 function typeRows(cnt,total){ const rows=TYPE_ORDER.filter(t=>t!=="B"||cnt.B).map(t=>{const i=TYPE_INFO[t],c=cnt[t]||0;
@@ -314,11 +330,11 @@ function render(){
   if(!sessions.length){ $("out").innerHTML='<div class="panel"><div class="pt">Type distribution (players)</div><div class="empty">ჯერ არცერთი თამაში არ არის. როცა ვინმე ითამაშებს, აქ ყველაფერი თავისით გამოჩნდება.</div></div>'; renderGames(); return; }
   const typeCount={}; players.forEach(p=>typeCount[p.type]=(typeCount[p.type]||0)+1);
   const CATS=[{n:"1",min:1,max:1},{n:"2-3",min:2,max:3},{n:"4-6",min:4,max:6},{n:"7-10",min:7,max:10},{n:"11-20",min:11,max:20},{n:"21+",min:21,max:1e9}];
-  const catCount={}; CATS.forEach(c=>catCount[c.n]=0); players.filter(p=>p.visits>0).forEach(p=>{const c=CATS.find(c=>p.visits>=c.min&&p.visits<=c.max); catCount[c.n]++;});
+  const catCount={}; CATS.forEach(c=>catCount[c.n]=0); players.filter(p=>p.vis>0).forEach(p=>{const c=CATS.find(c=>p.vis>=c.min&&p.vis<=c.max); catCount[c.n]++;});
   if(!catCount["21+"]) delete catCount["21+"];
   const byVisit={}; done.forEach(s=>{ const b=byVisit[s.visit]=byVisit[s.visit]||{P:0,imp:0,n:0}; b.P+=s.P; b.imp+=s.improved?1:0; b.n++; });
   const typeOf={}; players.forEach(p=>typeOf[p.nick]=p.type);
-  const impPlus=done.filter(s=>s.visit>1&&(typeOf[s.nick]||"")[0]==="P"), impMinus=done.filter(s=>s.visit>1&&(typeOf[s.nick]||"")[0]==="M"), ratedGames=done.filter(s=>s.opp).length/2;
+  const impPlus=done.filter(s=>s.visit>1&&(typeOf[s.nick]||"")[0]==="P"), impMinus=done.filter(s=>s.visit>1&&(typeOf[s.nick]||"")[0]==="M"), ratedGames=done.reduce((a,s)=>a+(s.nP>1?s.nP-1:0),0)/2;
   const rate=(arr)=>arr.length?(100*arr.filter(s=>s.improved).length/arr.length).toFixed(0):"–";
   const firstDay=Math.min(...sessions.map(s=>s.day)), lastDay=Math.max(...sessions.map(s=>s.day)), days=lastDay-firstDay+1;
   const freq=[...players].filter(p=>p.games>0).sort((a,b)=>b.games-a.games||b.visits-a.visits).slice(0,12);
@@ -334,10 +350,12 @@ function render(){
     svg+=`<div class="ps" style="margin-top:6px">${freq.map((p,i)=>`<span style="color:${cols[i%cols.length]}">●</span> ${esc(p.nick)}`).join(" &nbsp; ")}</div>`;
   } else svg='<div class="empty">ჯერ 1-vs-1 თამაში არ ყოფილა</div>';
 
-  const perDay=done.length/Math.max(1,days), returned=players.filter(p=>p.visits>=2).length, withVisits=players.filter(p=>p.visits>0).length;
+  const nVisits=sessions.filter(s=>s.gameNo===1).length, perDay=nVisits/Math.max(1,days), returned=players.filter(p=>p.vis>=2).length, withVisits=players.filter(p=>p.vis>0).length;
   const resultsHtml=`<div class="panel"><div class="pt">Results</div>${helpBox("results")}<div class="cards">
    <div class="card"><div class="v">${players.length}</div><div class="k">total players</div></div>
-   <div class="card"><div class="v">${done.length}</div><div class="k">sessions (visits) · ${days} days</div></div>
+   <div class="card"><div class="v">${nVisits}</div><div class="k">sessions (visits) · ${days} days</div></div>
+   <div class="card"><div class="v">${done.length}</div><div class="k">games (${GAME_THROWS} throws each)</div></div>
+   <div class="card"><div class="v">${(done.length/Math.max(1,nVisits)).toFixed(1)}</div><div class="k">games per visit</div></div>
    <div class="card"><div class="v">${perDay.toFixed(1)}</div><div class="k">sessions/day</div></div>
    <div class="card"><div class="v">${(perDay*7).toFixed(0)}</div><div class="k">sessions/week</div></div>
    <div class="card"><div class="v">${(100*returned/Math.max(1,withVisits)).toFixed(1)}%</div><div class="k">returned (≥2 visits)</div></div>
@@ -350,7 +368,7 @@ function render(){
   </div></div>`;
 
   let html="";
-  const wk={}; done.forEach(s=>{ const w=Math.floor((s.day-firstDay)/7)+1; const b=wk[w]=wk[w]||{n:0,first:0,ret:0}; b.n++; if(s.visit===1)b.first++; else b.ret++; });
+  const wk={}; sessions.filter(s=>s.gameNo===1).forEach(s=>{ const w=Math.floor((s.day-firstDay)/7)+1; const b=wk[w]=wk[w]||{n:0,first:0,ret:0}; b.n++; if(s.visit===1)b.first++; else b.ret++; });
   const lbAll=[...players].filter(p=>p.games>0).sort((a,b)=>b.rating-a.rating);
   const tsAll=[...players].filter(p=>p.visits>0).sort((a,b)=>b.best-a.best||a.nick.localeCompare(b.nick));
   window.LB={rating:lbAll,top:tsAll};
@@ -358,14 +376,14 @@ function render(){
   const none=c=>`<tr><td colspan="${c}" class="empty">—</td></tr>`;
   html+=`<div class="row2"><div class="panel"><div class="pt">By week — sessions / first-time / returning</div>${helpBox("week")}<div class="scroll"><table><tr><th>Week</th><th>Sessions</th><th>First-time</th><th>Returning</th><th>Return %</th></tr>${Object.keys(wk).map(w=>`<tr><td>${w}</td><td>${wk[w].n}</td><td>${wk[w].first}</td><td>${wk[w].ret}</td><td>${(100*wk[w].ret/wk[w].n).toFixed(0)}%</td></tr>`).join("")||none(5)}</table></div></div>
   <div class="panel"><div class="pt">Rating — Top 10</div>${helpBox("lb10")}<div class="scroll"><table><tr><th>#</th><th>Name</th><th>Rating</th><th>RD</th><th>Games</th><th>W / L / D</th><th>Type</th></tr>${lb.map((p,i)=>lbRow("rating",p,i)).join("")||none(7)}</table></div></div></div>`;
-  html+=`<div class="row2"><div class="panel"><div class="pt">Top score — Top 10</div>${helpBox("ts10")}<div class="scroll"><table><tr><th>#</th><th>Name</th><th>Top score</th><th>Visits</th><th>Type</th></tr>${ts.map((p,i)=>lbRow("top",p,i)).join("")||none(5)}</table></div></div>
+  html+=`<div class="row2"><div class="panel"><div class="pt">Top score — Top 10</div>${helpBox("ts10")}<div class="scroll"><table><tr><th>#</th><th>Name</th><th>Top score</th><th>Visits</th><th>Games</th><th>Type</th></tr>${ts.map((p,i)=>lbRow("top",p,i)).join("")||none(5)}</table></div></div>
   <div class="panel"><div class="pt">Full leaderboards</div>${helpBox("lball")}
    <details id="lbAll" ontoggle="if(this.open)lbFill('rating')"><summary style="cursor:pointer;color:#2BE08B;font-weight:700">Rating — all ${lbAll.length} rated players</summary>
    <input class="q" id="lbQrating" placeholder="Search name..." oninput="lbFill('rating')">
    <div style="max-height:520px;overflow:auto"><table><thead><tr><th>#</th><th>Name</th><th>Rating</th><th>RD</th><th>Games</th><th>W / L / D</th><th>Type</th></tr></thead><tbody id="lbBodyrating"></tbody></table></div></details>
    <details id="tsAll" ontoggle="if(this.open)lbFill('top')" style="margin-top:10px"><summary style="cursor:pointer;color:#2BE08B;font-weight:700">Top score — all ${tsAll.length} players</summary>
    <input class="q" id="lbQtop" placeholder="Search name..." oninput="lbFill('top')">
-   <div style="max-height:520px;overflow:auto"><table><thead><tr><th>#</th><th>Name</th><th>Top score</th><th>Visits</th><th>Type</th></tr></thead><tbody id="lbBodytop"></tbody></table></div></details></div></div>`;
+   <div style="max-height:520px;overflow:auto"><table><thead><tr><th>#</th><th>Name</th><th>Top score</th><th>Visits</th><th>Games</th><th>Type</th></tr></thead><tbody id="lbBodytop"></tbody></table></div></details></div></div>`;
   const typesHtml=`<div class="panel"><div class="pt">Type distribution (players)</div>${helpBox("types")}<div class="scroll"><table><tr><th>Type</th><th>Name</th><th>Wants to win</th><th>Behaviour</th><th>Expected</th><th>Players</th><th>Share</th></tr>${typeRows(typeCount,players.length)}</table></div></div>`;
   html+=`<div class="panel"><div class="pt">Visit categories</div>${helpBox("visits")}<table>${bars(catCount,Math.max(1,withVisits))}</table></div>`;
   html+=`<div class="row2"><div class="panel"><div class="pt">Rating trajectory — 12 players with the most 1-vs-1 games</div>${helpBox("traj")}${svg}</div>
@@ -374,7 +392,7 @@ function render(){
   const sel=window.EX_NICK && players.some(p=>p.nick===window.EX_NICK) ? window.EX_NICK : ([...players].sort((a,b)=>b.hist.length-a.hist.length)[0]||{}).nick;
   window.EX_NICK=sel;
   const sp=players.find(p=>p.nick===sel);
-  if(sp){ html+=`<div class="panel"><div class="pt">Player — <select id="exSel">${[...players].sort((a,b)=>a.nick.localeCompare(b.nick)).map(p=>`<option${p.nick===sel?" selected":""}>${esc(p.nick)}</option>`).join("")}</select> · type <span title="${esc(tt(sp.type))}">${sp.type}</span> (${(TYPE_INFO[sp.type]||{}).name||"unknown"}) · ${sp.visits} visits · rating ${showR(sp.rating,sp.rd)} ±${Math.round(sp.rd)} · top score ${sp.best}</div>${helpBox("example")}<div class="scroll"><table><tr><th>Visit</th><th>Day</th><th>P</th><th>Opponent</th><th>Result</th><th>Rating</th><th>Change</th><th>Top score</th><th>New top</th><th>Type @20</th><th>Type @50</th></tr>${sp.hist.map(h=>`<tr><td>${h.abandoned?'<span class="tag">unfinished</span>':h.visit}</td><td>${fmtDay(h.t)}</td><td>${h.P}</td><td>${h.opp?esc(h.opp):"solo"}</td><td class="${h.won==="yes"?"ok":(h.won==="no"?"warn":"")}">${h.opp?({yes:"win",no:"loss",tie:"draw"})[h.won]:"–"}</td><td>${showR(h.rAfter,h.rd)}</td><td class="${h.gain>0?"ok":(h.gain<0?"warn":"")}">${h.opp&&!h.abandoned?(h.gain>0?"+":"")+Math.round(h.gain):"–"}</td><td>${h.best}</td><td class="${h.improved?"ok":""}">${h.improved?"yes":"–"}</td><td title="${esc(tt(h.c20))}">${tl(h,"c20")}</td><td title="${esc(tt(h.c50))}">${tl(h,"c50")}</td></tr>`).join("")}</table></div></div>`; }
+  if(sp){ html+=`<div class="panel"><div class="pt">Player — <select id="exSel">${[...players].sort((a,b)=>a.nick.localeCompare(b.nick)).map(p=>`<option${p.nick===sel?" selected":""}>${esc(p.nick)}</option>`).join("")}</select> · type <span title="${esc(tt(sp.type))}">${sp.type}</span> (${(TYPE_INFO[sp.type]||{}).name||"unknown"}) · ${sp.vis} visits · ${sp.visits} games · rating ${showR(sp.rating,sp.rd)} ±${Math.round(sp.rd)} · top score ${sp.best}</div>${helpBox("example")}<div class="scroll"><table><tr><th>Visit · game</th><th>Day</th><th>P</th><th>Opponent</th><th>Result</th><th>Rating</th><th>Change</th><th>Top score</th><th>New top</th><th>Type @20</th><th>Type @30</th></tr>${sp.hist.map(h=>`<tr><td>${h.visit} · #${h.gameNo}${h.abandoned?' <span class="tag">unfinished</span>':""}</td><td>${fmtDay(h.t)}</td><td>${h.P}</td><td>${h.opp?esc(h.opp):"solo"}</td><td class="${resCls(h)}">${resTxt(h)}</td><td>${showR(h.rAfter,h.rd)}</td><td class="${h.gain>0?"ok":(h.gain<0?"warn":"")}">${h.opp&&!h.abandoned?(h.gain>0?"+":"")+Math.round(h.gain):"–"}</td><td>${h.best}</td><td class="${h.improved?"ok":""}">${h.improved?"yes":"–"}</td><td title="${esc(tt(h.c20))}">${tl(h,"c20")}</td><td title="${esc(tt(h.c50))}">${tl(h,"c50")}</td></tr>`).join("")}</table></div></div>`; }
   $("out").innerHTML=typesHtml+html+resultsHtml;   // personality types first, summary cards last
   if($("exSel")) $("exSel").onchange=e=>{ window.EX_NICK=e.target.value; render(); };
   ["rating","top"].forEach(k=>{ const d=$(k==="rating"?"lbAll":"tsAll"); if(d&&d.open) lbFill(k); });
@@ -383,16 +401,16 @@ function render(){
 
 function renderGames(){
   const s=[...DATA.sessions].reverse();
-  $("gRows").innerHTML = s.length ? s.map(x=>`<tr><td>${fmtTs(x.t)}</td><td>${esc(x.nick)}</td><td>${x.opp?esc(x.opp):"solo"}</td><td class="${x.won==="yes"?"ok":(x.won==="no"?"warn":"")}">${x.opp?({yes:"win",no:"loss",tie:"draw"})[x.won]:"–"}</td><td>${x.throws}</td><td>${x.hits}</td><td class="warn">${x.throws-x.hits}</td><td class="ok">${x.throws?Math.round(100*x.hits/x.throws)+"%":"—"}</td><td><b>${x.P}</b></td><td title="${esc(tt(x.c20))}">${tl(x,"c20")}</td><td title="${esc(tt(x.c50))}">${tl(x,"c50")}</td><td>${x.abandoned?'<span class="tag">unfinished</span>':""}</td></tr>`).join("")
-    : '<tr><td colspan="12" class="empty">თამაში ჯერ არ არის</td></tr>';
+  $("gRows").innerHTML = s.length ? s.map(x=>`<tr><td>${fmtTs(x.t)}</td><td>${x.visit} · #${x.gameNo}</td><td>${esc(x.nick)}</td><td>${x.opp?esc(x.opp):"solo"}</td><td class="${resCls(x)}">${resTxt(x)}</td><td>${x.throws}</td><td>${x.hits}</td><td class="warn">${x.throws-x.hits}</td><td class="ok">${x.throws?Math.round(100*x.hits/x.throws)+"%":"—"}</td><td><b>${x.P}</b></td><td title="${esc(tt(x.c20))}">${tl(x,"c20")}</td><td title="${esc(tt(x.c50))}">${tl(x,"c50")}</td><td>${x.abandoned?'<span class="tag">unfinished</span>':""}</td></tr>`).join("")
+    : '<tr><td colspan="13" class="empty">თამაში ჯერ არ არის</td></tr>';
   $("delSel").innerHTML = espPlayers.length ? espPlayers.map(n=>'<option>'+esc(n)+'</option>').join("") : '<option value="">—</option>';
 }
 
 // ---------- CSV (Third Zone-ის ფორმატი) ----------
 function csv(rows){ if(!rows.length)return""; const k=Object.keys(rows[0]); return k.join(",")+"\n"+rows.map(r=>k.map(x=>String(r[x]??"").replace(/,/g,";")).join(",")).join("\n"); }
 function dl(name,text){ const b=new Blob(["﻿"+text],{type:"text/csv"}); const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=name; a.click(); }
-$("dlP").onclick=()=>dl("players.csv",csv(DATA.players.map((p,i)=>({id:i+1,nick:p.nick,type:p.type,visits:p.visits,rating:p.rating.toFixed(1),rd:p.rd.toFixed(0),games:p.games,wins:p.w,losses:p.l,draws:p.dr,top_score:p.best,new_top_scores:p.k,created:p.since?isoLocal(p.since).slice(0,10):"",source:"real"}))));
-$("dlS").onclick=()=>dl("sessions.csv",csv(DATA.sessions.map(s=>({sid:s.gid,day:isoLocal(s.t).slice(0,10),ts:isoLocal(s.t),nick:s.nick,visit:s.visit??0,throws:s.throws,hits:s.hits,P:s.P,r_before:s.rBefore,r_after:s.rAfter,gain:s.gain,improved:s.improved?1:0,best:s.best,opp:s.opp,won:s.won,abandoned:s.abandoned?1:0,type20:s.c20,type50:s.c50,estimated:s.est?1:0,source:"real"}))));
+$("dlP").onclick=()=>dl("players.csv",csv(DATA.players.map((p,i)=>({id:i+1,nick:p.nick,type:p.type,visits:p.vis,games_played:p.visits,rating:p.rating.toFixed(1),rd:p.rd.toFixed(0),games:p.games,wins:p.w,losses:p.l,draws:p.dr,top_score:p.best,new_top_scores:p.k,created:p.since?isoLocal(p.since).slice(0,10):"",source:"real"}))));
+$("dlS").onclick=()=>dl("sessions.csv",csv(DATA.sessions.map(s=>({sid:s.gid,day:isoLocal(s.t).slice(0,10),ts:isoLocal(s.t),nick:s.nick,visit:s.visit,game_in_visit:s.gameNo,players:s.nP,place:s.place,throws:s.throws,hits:s.hits,P:s.P,r_before:s.rBefore,r_after:s.rAfter,gain:s.gain,improved:s.improved?1:0,best:s.best,opp:s.opp,won:s.won,abandoned:s.abandoned?1:0,type20:s.c20,type50:s.c50,estimated:s.est?1:0,source:"real"}))));
 $("dlT").onclick=()=>dl("throws.csv",csv(DATA.throws.map((t,i)=>({id:i+1,sid:t.sid,nick:t.nick,n:t.n,gap_ms:Math.round(t.iv*1000),tier:t.tier,hole:TIER_NAME[t.tier],pts:t.pts,hit:t.result==="HIT"?1:0,estimated:t.est?1:0,source:"real"}))));
 
 // ---------- ცოცხალი მდგომარეობა + ადმინი ----------
